@@ -38,6 +38,10 @@ function validatePairs(parsed){
 }
 export default function App(){
  const [view,setView]=useState('dashboard'); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
+ const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
+ const [operator,setOperator]=useState('Operator'); const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null);
+ const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(50);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
+ useEffect(()=>{load()},[]);
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
  const importFile=async e=>{
   const input=e.currentTarget,f=input.files?.[0];if(!f)return;
