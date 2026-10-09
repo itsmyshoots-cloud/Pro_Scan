@@ -395,7 +395,7 @@ export default function App(){
  </section>
  <div className='dashboard-footer'><span><i className='live-dot'/> Live values refresh automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleString('en-IN'):'Loading…'}</span><button onClick={()=>setView('manage')}>Manage production plans →</button></div>
 </main>}
- {{view==='planner'&&<main><section className='panel planner-panel'>
+ {view==='planner'&&<main><section className='panel planner-panel'>
  <div className='panel-head'><div><span className='eyebrow'>ADMIN / PLANNER</span><h2>Create daily production plan</h2><p className='planner-subtitle'>Set production targets by hour, then allocate a supplier serial batch. Existing serials and labels are checked before the plan can be created.</p></div><button onClick={()=>setView('dashboard')}>Back</button></div>
  <div className='grid'>
   <label>Production date<input type='date' value={form.production_date} onChange={e=>setForm({...form,production_date:e.target.value})}/></label>
