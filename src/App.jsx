@@ -85,20 +85,6 @@ export default function App(){
   setStatusUpdatingId('');
   await refreshMonitoring();
  };
- const activePlanIds=useMemo(()=>new Set(activePlans.map(plan=>plan.id)),[activePlans]);
- const activePlanSerials=useMemo(()=>monitoringSerials.filter(row=>activePlanIds.has(row.plan_id)),[monitoringSerials,activePlanIds]);
- const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0),[activePlans]);
- const activeScannedQty=useMemo(()=>activePlanSerials.filter(row=>row.status==='scanned').length,[activePlanSerials]);
- const activePendingQty=useMemo(()=>activePlanSerials.filter(row=>row.status!=='scanned').length,[activePlanSerials]);
- const productionLineStats=useMemo(()=>[...new Set(activePlans.map(plan=>plan.production_line||'Unassigned'))].sort().map(line=>{
-  const linePlans=activePlans.filter(plan=>(plan.production_line||'Unassigned')===line);
-  const ids=new Set(linePlans.map(plan=>plan.id));
-  const target=linePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0);
-  const scanned=monitoringSerials.filter(row=>ids.has(row.plan_id)&&row.status==='scanned').length;
-  const pending=monitoringSerials.filter(row=>ids.has(row.plan_id)&&row.status!=='scanned').length;
-  return {line,plans:linePlans.length,target,scanned,pending,percent:target?Math.min(100,Math.round(scanned/target*100)):0};
- }),[activePlans,monitoringSerials]);
- const filteredPlans=useMemo(()=>plans.filter(plan=>planStatusFilter==='all'||plan.status===planStatusFilter),[plans,planStatusFilter]);
  const refreshPlanMetrics=async(plan=selectedPlan)=>{
   if(!plan){setPlanSerials([]);setDuplicateScans([]);return;}
   const [serialResult,duplicateResult]=await Promise.all([
@@ -128,6 +114,21 @@ export default function App(){
  const scannedSerials=useMemo(()=>planSerials.filter(s=>s.status==='scanned'),[planSerials]);
  const uniqueDuplicateSerials=useMemo(()=>[...new Map(duplicateScans.map(e=>[e.serial_number,e])).values()],[duplicateScans]);
  const lastScannedRecord=useMemo(()=>scannedSerials.reduce((latest,row)=>!latest||new Date(row.scanned_at||0).getTime()>new Date(latest.scanned_at||0).getTime()?row:latest,null),[scannedSerials]);
+ const activePlanIds=useMemo(()=>new Set(activePlans.map(plan=>plan.id)),[activePlans]);
+ const activePlanSerials=useMemo(()=>monitoringSerials.filter(row=>activePlanIds.has(row.plan_id)),[monitoringSerials,activePlanIds]);
+ const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0),[activePlans]);
+ const activeScannedQty=useMemo(()=>activePlanSerials.filter(row=>row.status==='scanned').length,[activePlanSerials]);
+ const activePendingQty=useMemo(()=>activePlanSerials.filter(row=>row.status!=='scanned').length,[activePlanSerials]);
+ const productionLineStats=useMemo(()=>[...new Set(activePlans.map(plan=>plan.production_line||'Unassigned'))].sort().map(line=>{
+  const linePlans=activePlans.filter(plan=>(plan.production_line||'Unassigned')===line);
+  const ids=new Set(linePlans.map(plan=>plan.id));
+  const target=linePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0);
+  const scanned=monitoringSerials.filter(row=>ids.has(row.plan_id)&&row.status==='scanned').length;
+  const pending=monitoringSerials.filter(row=>ids.has(row.plan_id)&&row.status!=='scanned').length;
+  return {line,plans:linePlans.length,target,scanned,pending,percent:target?Math.min(100,Math.round(scanned/target*100)):0};
+ }),[activePlans,monitoringSerials]);
+ const filteredPlans=useMemo(()=>plans.filter(plan=>planStatusFilter==='all'||plan.status===planStatusFilter),[plans,planStatusFilter]);
+
 
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
  const importFile=async e=>{
