@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {BrowserMultiFormatReader} from '@zxing/browser';
+import {BrowserQRCodeReader} from '@zxing/browser';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import {supabase} from './lib/supabase';
@@ -167,7 +167,7 @@ export default function App(){
  useEffect(()=>{
   if(!camera)return;
   let disposed=false;let scannerControls=null;
-  const reader=new BrowserMultiFormatReader();readerRef.current=reader;cameraLastCodeRef.current='';
+  const reader=new BrowserQRCodeReader();readerRef.current=reader;cameraLastCodeRef.current='';
   const boot=async()=>{
    const video=videoRef.current;
    if(!video){if(!disposed){setMessage('Camera preview is not ready. Please try again.');setCamera(false);}return;}
