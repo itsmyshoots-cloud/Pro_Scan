@@ -41,11 +41,22 @@ export default function App(){
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
  const [operator,setOperator]=useState('Operator'); const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
+ const fetchAllRows=async queryBuilder=>{
+  const rows=[];let offset=0;
+  while(true){
+   const {data,error}=await queryBuilder(offset,offset+999);
+   if(error)return {data:null,error};
+   const page=data||[];rows.push(...page);
+   if(page.length<1000)break;
+   offset+=1000;
+  }
+  return {data:rows,error:null};
+ };
  const refreshPlanMetrics=async(plan=selectedPlan)=>{
   if(!plan){setPlanSerials([]);setDuplicateScans([]);return;}
   const [serialResult,duplicateResult]=await Promise.all([
-   supabase.from('plan_serials').select('id,label_number,serial_number,status,scanned_at,scanned_by,sequence_no').eq('plan_id',plan.id).order('sequence_no',{ascending:true}),
-   supabase.from('scan_events').select('id,plan_id,serial_number,scanned_at,operator_name,production_line').eq('plan_id',plan.id).eq('scan_status','duplicate').order('scanned_at',{ascending:false}).limit(500)
+   fetchAllRows((from,to)=>supabase.from('plan_serials').select('id,label_number,serial_number,status,scanned_at,scanned_by,sequence_no').eq('plan_id',plan.id).order('sequence_no',{ascending:true}).range(from,to)),
+   fetchAllRows((from,to)=>supabase.from('scan_events').select('id,plan_id,serial_number,scanned_at,operator_name,production_line').eq('plan_id',plan.id).eq('scan_status','duplicate').order('scanned_at',{ascending:false}).range(from,to))
   ]);
   if(serialResult.error){setMessage('Could not load plan progress: '+serialResult.error.message);return;}
   if(duplicateResult.error){setMessage('Could not load duplicate scans: '+duplicateResult.error.message);return;}
@@ -156,7 +167,7 @@ export default function App(){
  <div className='operator-top'><div><span className='eyebrow'>OPERATOR SCAN</span><h2>{selectedPlan?.product_name||'Select your production assignment'}</h2><p>{selectedPlan?(selectedPlan.brand||'—')+' · '+selectedPlan.model+' · '+selectedPlan.production_line:'Choose a line, brand and product to load the matching active plan.'}</p></div><label>Operator name<input value={operator} onChange={e=>setOperator(e.target.value)} placeholder='Enter operator name'/></label></div>
  <div className='operator-filter-grid'>
   <label>Production line<select value={operatorFilters.production_line} onChange={e=>{setOperatorFilters({production_line:e.target.value,brand:'',product_name:''});setSelectedPlan(null);setDetailsPanel('')}}><option value=''>Choose production line</option>{operatorLines.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
-  <label>Brand<select value={operatorFilters.brand} onChange={e=>{setOperatorFilters({...operatorFilters,brand:e.target.value,product_name:''});setSelectedPlan(null);setDetailsPanel('')}}><option value=''>Choose brand</option>{operatorBrands.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+  <label>Brand<select value={operatorFilters.brand} disabled={!operatorFilters.production_line} onChange={e=>{setOperatorFilters({...operatorFilters,brand:e.target.value,product_name:''});setSelectedPlan(null);setDetailsPanel('')}}><option value=''>Choose brand</option>{operatorBrands.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
   <label>Product<select value={operatorFilters.product_name} disabled={!operatorFilters.brand} onChange={e=>{const next={...operatorFilters,product_name:e.target.value};setOperatorFilters(next);const matches=activePlans.filter(p=>p.production_line===next.production_line&&p.brand===next.brand&&p.product_name===next.product_name);setSelectedPlan(matches[0]||null);setDetailsPanel('')}}><option value=''>Choose product</option>{operatorProducts.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
  </div>
  {operatorFilters.production_line&&operatorFilters.brand&&operatorFilters.product_name&&<div className='matching-plan-row'><label>Matching production plan<select value={selectedPlan?.id||''} onChange={e=>{const plan=matchingOperatorPlans.find(p=>p.id===e.target.value)||null;setSelectedPlan(plan);setDetailsPanel('');setDuplicateWarning(null)}}><option value=''>Choose production plan</option>{matchingOperatorPlans.map(p=><option key={p.id} value={p.id}>{p.production_date} · {p.model} · {Number(p.planned_qty||0).toLocaleString()} planned · {p.production_line}</option>)}</select></label>{selectedPlan&&<span className='badge'>ACTIVE PLAN</span>}</div>}
