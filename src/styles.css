@@ -19,3 +19,129 @@
 .last-scanned-at{max-width:45%;text-align:right}
 .last-scanned-at b{font-size:12px;color:#334155;overflow-wrap:anywhere}
 @media(max-width:600px){.last-scanned-banner{align-items:flex-start;flex-direction:column}.last-scanned-banner strong{font-size:20px}.last-scanned-at{max-width:100%;text-align:left}}
+
+
+/* Compact, single-screen Operator workstation layout */
+.app-operator{max-width:1540px;padding:10px 18px}
+.app-operator>header{margin-bottom:8px;gap:12px;align-items:center}
+.app-operator h1{font-size:27px;margin:0}
+.app-operator>header .eyebrow{font-size:9px}
+.app-operator .top-actions{gap:6px}
+.app-operator .top-actions button{padding:7px 10px;font-size:12px}
+.app-operator .operator-card{padding:12px;border-radius:16px}
+.app-operator .operator-clock{margin-bottom:8px;padding:6px 10px;border-radius:10px}
+.app-operator .operator-clock .eyebrow{font-size:9px;letter-spacing:.09em}
+.app-operator .operator-clock strong{font-size:12px}
+.app-operator .operator-clock>b{font-size:17px}
+.app-operator .operator-top{margin:0 0 6px;align-items:center;gap:12px}
+.app-operator .operator-top h2{font-size:20px;margin:0 0 2px}
+.app-operator .operator-top p{font-size:11px;margin:0;color:#64748b}
+.app-operator .operator-filter-grid{margin:8px 0;gap:9px}
+.app-operator .operator-filter-grid label,.app-operator .matching-plan-row label{font-size:11px}
+.app-operator .operator-filter-grid select,.app-operator .matching-plan-row select{margin-top:4px;padding:8px 9px;font-size:12px;border-radius:8px}
+.app-operator .matching-plan-row{padding:7px 10px;margin:0 0 8px;gap:10px;border-radius:10px}
+.app-operator .matching-plan-row .badge{white-space:nowrap;padding:4px 7px}
+.app-operator .operator-plan-strip{padding:8px 12px;margin:8px 0;border-radius:10px;gap:10px}
+.app-operator .operator-plan-strip>div:first-child{gap:2px}
+.app-operator .operator-plan-strip .eyebrow{font-size:9px}
+.app-operator .operator-plan-strip strong{font-size:13px;line-height:1.25}
+.app-operator .operator-plan-strip span:not(.eyebrow){font-size:10px}
+.app-operator .plan-stamp{min-width:80px;gap:2px;padding-left:10px}
+.app-operator .plan-stamp span,.app-operator .plan-stamp b{font-size:10px}
+.operator-dashboard-grid{display:grid;grid-template-columns:minmax(310px,.88fr) minmax(360px,1.12fr);gap:14px;align-items:start}
+.operator-progress-pane,.operator-scanner-pane{min-width:0}
+.app-operator .operator-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}
+.app-operator .metric-tile{min-height:98px;padding:10px 12px;gap:5px;border-radius:12px;box-shadow:none}
+.app-operator .metric-tile>span{font-size:11px;line-height:1.25}
+.app-operator .metric-tile>b{font-size:26px}
+.app-operator .metric-tile>small{font-size:10px;line-height:1.25}
+.app-operator .serial-details{margin:8px 0 0;padding:10px;border-radius:10px}
+.app-operator .serial-details .panel-head{margin-bottom:8px}
+.app-operator .serial-details .panel-head h3{font-size:15px}
+.app-operator .serial-details .table-scroll{max-height:230px}
+.app-operator .serial-details th,.app-operator .serial-details td{padding:7px;font-size:11px}
+.app-operator .scanner{height:clamp(190px,29vh,280px);margin:0 0 7px;border-radius:13px;background:#0b1022}
+.app-operator .scanner video{object-fit:contain;background:#0b1022}
+.app-operator .camera-placeholder{gap:6px;padding:12px}
+.app-operator .camera-placeholder b{font-size:15px}
+.app-operator .camera-placeholder span:not(.camera-icon){font-size:11px}
+.app-operator .camera-icon{font-size:28px}
+.app-operator .scan-actions{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:9px}
+.app-operator .scan-actions button{padding:9px 12px;font-size:12px;border-radius:9px;min-width:0;white-space:nowrap}
+.app-operator .scan-instructions{font-size:10px;line-height:1.3}
+.app-operator .last-scanned-banner{margin-top:8px;padding:9px 11px;gap:12px;border-radius:10px}
+.app-operator .last-scanned-banner>div{gap:3px}
+.app-operator .last-scanned-banner span{font-size:9px;letter-spacing:.05em}
+.app-operator .last-scanned-banner strong{font-size:18px}
+.app-operator .last-scanned-banner small{font-size:10px}
+.app-operator .last-scanned-at{max-width:46%}
+.app-operator .last-scanned-at b{font-size:10px;line-height:1.3}
+.app-operator .status{margin-top:7px;padding:7px 9px;font-size:11px;line-height:1.3;border-radius:9px}
+.app-operator .last-scan-time{margin-top:6px;padding-top:6px;gap:7px;font-size:10px}
+.app-operator .last-scan-time b{font-size:10px}
+.app-operator .live-refresh{margin-left:auto}
+.app-operator .notice{margin-top:8px;padding:9px 11px;font-size:12px}
+
+/* Small touch screens: keep the essential controls, progress and camera in view */
+@media(max-width:760px){
+ .app-operator{padding:7px}
+ .app-operator>header{flex-direction:row;align-items:center;gap:6px;margin-bottom:7px}
+ .app-operator h1{font-size:22px}
+ .app-operator>header>div:first-child .eyebrow{display:none}
+ .app-operator .top-actions{width:auto;max-width:80%;gap:3px;justify-content:flex-end;flex-wrap:wrap}
+ .app-operator .top-actions .live{display:none}
+ .app-operator .top-actions button{padding:5px 6px;font-size:10px;border-radius:7px}
+ .app-operator .operator-card{padding:8px;border-radius:12px}
+ .app-operator .operator-clock{align-items:center;flex-direction:row;margin-bottom:6px;padding:4px 7px}
+ .app-operator .operator-clock .eyebrow{display:none}
+ .app-operator .operator-clock strong{font-size:10px}
+ .app-operator .operator-clock>b{font-size:14px}
+ .app-operator .operator-top{flex-direction:row;align-items:center;margin-bottom:5px;gap:5px}
+ .app-operator .operator-top h2{font-size:16px}
+ .app-operator .operator-top p{font-size:10px;line-height:1.2}
+ .app-operator .operator-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:6px 0}
+ .app-operator .operator-filter-grid label{font-size:9px;line-height:1.2}
+ .app-operator .operator-filter-grid select{padding:7px 4px;font-size:10px;border-radius:7px}
+ .app-operator .matching-plan-row{flex-direction:row;align-items:center;padding:6px 7px;margin-bottom:6px;gap:6px}
+ .app-operator .matching-plan-row label{font-size:9px;flex:1}
+ .app-operator .matching-plan-row select{font-size:10px;padding:6px 4px}
+ .app-operator .matching-plan-row .badge{font-size:8px}
+ .app-operator .operator-plan-strip{flex-direction:row;align-items:center;padding:6px 8px;margin:6px 0;gap:6px}
+ .app-operator .operator-plan-strip strong{font-size:11px}
+ .app-operator .operator-plan-strip span:not(.eyebrow){font-size:9px}
+ .app-operator .operator-plan-strip .eyebrow{font-size:8px}
+ .app-operator .plan-stamp{width:auto;border:0;border-left:1px solid #cbd5e1;min-width:62px;padding:2px 0 2px 7px}
+ .app-operator .plan-stamp span,.app-operator .plan-stamp b{font-size:9px}
+ .operator-dashboard-grid{grid-template-columns:minmax(0,1fr);gap:7px}
+ .app-operator .operator-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+ .app-operator .metric-tile{min-height:68px;padding:7px 8px;gap:3px;border-radius:9px}
+ .app-operator .metric-tile>span{font-size:9px}
+ .app-operator .metric-tile>b{font-size:22px}
+ .app-operator .metric-tile>small{font-size:9px}
+ .app-operator .scanner{height:clamp(125px,20vh,175px);margin:0 0 5px;border-radius:10px}
+ .app-operator .camera-placeholder{gap:4px}
+ .app-operator .camera-placeholder b{font-size:13px}
+ .app-operator .camera-placeholder span:not(.camera-icon){font-size:10px}
+ .app-operator .camera-icon{font-size:23px}
+ .app-operator .scan-actions{grid-template-columns:auto minmax(0,1fr);gap:6px}
+ .app-operator .scan-actions button{padding:8px 9px;font-size:10px}
+ .app-operator .scan-instructions{font-size:9px}
+ .app-operator .last-scanned-banner{flex-direction:row;align-items:center;margin-top:6px;padding:7px 8px;gap:7px}
+ .app-operator .last-scanned-banner span{font-size:8px}
+ .app-operator .last-scanned-banner strong{font-size:15px}
+ .app-operator .last-scanned-banner small{font-size:9px}
+ .app-operator .last-scanned-at{max-width:43%;text-align:right}
+ .app-operator .last-scanned-at b{font-size:9px}
+ .app-operator .status{margin-top:5px;padding:6px 7px;font-size:10px}
+ .app-operator .last-scan-time{margin-top:4px;padding-top:4px;gap:5px;font-size:9px}
+ .app-operator .last-scan-time b{font-size:9px}
+ .app-operator .live-refresh{display:none}
+ .app-operator .serial-details{margin-top:7px;padding:8px}
+}
+@media(max-width:380px){
+ .app-operator>header{align-items:flex-start}
+ .app-operator .top-actions{max-width:72%}
+ .app-operator .top-actions button{font-size:9px;padding:4px}
+ .app-operator .operator-filter-grid select{font-size:9px}
+ .app-operator .last-scanned-at{max-width:46%}
+}
