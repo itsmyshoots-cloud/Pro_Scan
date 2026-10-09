@@ -78,8 +78,8 @@ export default function App(){
 
  const checkDatabaseForConflicts=async(parsedRows)=>{
   const [allocatedResult,registryResult]=await Promise.all([
-   fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').range(from,to)),
-   fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').range(from,to))
+   fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').order('id',{ascending:true}).range(from,to)),
+   fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to))
   ]);
   if(allocatedResult.error)throw new Error('Could not check existing production serial batches: '+allocatedResult.error.message);
   if(registryResult.error)throw new Error('Could not check the serial registry: '+registryResult.error.message);
@@ -226,7 +226,7 @@ export default function App(){
    }else{
     setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
    }
-   if(Number(form.planned_qty)>parsed.length)setMessage(parsed.length.toLocaleString()+' pairs loaded, but planned quantity exceeds the available serial count.');
+   if(!conflicts.length&&Number(form.planned_qty)>parsed.length)setMessage(parsed.length.toLocaleString()+' pairs loaded, but planned quantity exceeds the available serial count.');
   }catch(error){setRows([]);setImportConflicts([]);setMessage(error?.message||'Could not read or validate the supplier file.');}
   finally{setBusy(false);input.value='';}
  };
