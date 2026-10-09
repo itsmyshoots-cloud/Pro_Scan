@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {BrowserQRCodeReader} from '@zxing/browser';
+import {BrowserCodeReader,BrowserMultiFormatReader} from '@zxing/browser';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import {supabase} from './lib/supabase';
@@ -167,19 +167,24 @@ export default function App(){
  useEffect(()=>{
   if(!camera)return;
   let disposed=false;let scannerControls=null;
-  const reader=new BrowserQRCodeReader();readerRef.current=reader;cameraLastCodeRef.current='';
+  const reader=new BrowserMultiFormatReader();readerRef.current=reader;cameraLastCodeRef.current='';
   const boot=async()=>{
    const video=videoRef.current;
    if(!video){if(!disposed){setMessage('Camera preview is not ready. Please try again.');setCamera(false);}return;}
    video.muted=true;video.playsInline=true;
    try{
-    scannerControls=await reader.decodeFromConstraints({audio:false,video:{facingMode:{ideal:'environment'}}},video,(result)=>{
+    const devices=await BrowserCodeReader.listVideoInputDevices();
+    if(disposed)return;
+    const rearCamera=devices.find(device=>/back|rear|environment|wide/i.test(device.label));
+    const selectedDeviceId=rearCamera?.deviceId||devices[devices.length-1]?.deviceId;
+    scannerControls=await reader.decodeFromVideoDevice(selectedDeviceId,video,(result,error)=>{
      if(disposed||!result||scanInFlightRef.current)return;
      const text=result.getText();
      const token=String(text).trim().toUpperCase().match(/\bP-\d+\b|\bGM\d+\b/i);
      const code=(token?.[0]||String(text).trim()).toUpperCase();
      if(!code||cameraLastCodeRef.current===code)return;
      cameraLastCodeRef.current=code;
+     setMessage('QR detected: '+code+' · Checking selected plan…');
      void scanRef.current?.(text);
     });
     if(disposed)scannerControls?.stop();
