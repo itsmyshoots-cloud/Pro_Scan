@@ -7,6 +7,30 @@ import {supabase} from './lib/supabase';
 pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
 
 const lines=['Line 1','Line 2','Line 3'];
+function createHourlyTargets(start='09:00',end='18:00',previous=[]){
+ const toMinutes=value=>{const match=/^(\\d{2}):(\\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m===0?h*60+m:NaN;};
+ const startMinutes=toMinutes(start),endMinutes=toMinutes(end);
+ if(!Number.isFinite(startMinutes)||!Number.isFinite(endMinutes)||endMinutes<=startMinutes)return [];
+ const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]));
+ const output=[];
+ for(let minute=startMinutes;minute<endMinutes&&output.length<24;minute+=60){
+  const hour=String(Math.floor(minute/60)).padStart(2,'0')+':00';
+  output.push({hour,planned_qty:targetByHour.get(hour)||0});
+ }
+ return output;
+}
+function localDateKey(date){
+ return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+}
+function csvCell(value){return '"'+String(value??'').replace(/"/g,'""')+'"';}
+function downloadCsv(filename,headers,rows){
+ const csv='\\uFEFF'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\\r\\n');
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+ const url=URL.createObjectURL(blob),anchor=document.createElement('a');
+ anchor.href=url;anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 function pairsFromText(text){
  const labels=[...text.matchAll(/\bP-\d+\b/gi)].map(m=>m[0].toUpperCase());
  const serials=[...text.matchAll(/\bGM\d+\b/gi)].map(m=>m[0].toUpperCase());
@@ -39,7 +63,7 @@ function validatePairs(parsed){
 export default function App(){
  const [view,setView]=useState('dashboard'); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
+ const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>createHourlyTargets()); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -53,6 +77,29 @@ export default function App(){
   return {data:rows,error:null};
  };
 
+ const checkDatabaseForConflicts=async(parsedRows)=>{
+  const [allocatedResult,registryResult]=await Promise.all([
+   fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').range(from,to)),
+   fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').range(from,to))
+  ]);
+  if(allocatedResult.error)throw new Error('Could not check existing production serial batches: '+allocatedResult.error.message);
+  if(registryResult.error)throw new Error('Could not check the serial registry: '+registryResult.error.message);
+  const serialAllocations=new Map(),labelAllocations=new Map(),registeredSerials=new Set();
+  for(const row of allocatedResult.data||[]){
+   if(row.serial_number){if(!serialAllocations.has(row.serial_number))serialAllocations.set(row.serial_number,row); }
+   if(row.label_number){if(!labelAllocations.has(row.label_number))labelAllocations.set(row.label_number,row);}
+  }
+  for(const row of registryResult.data||[]){if(row.serial_number)registeredSerials.add(row.serial_number);}
+  const conflicts=[];
+  for(const row of parsedRows){
+   const reasons=[],existingSerial=serialAllocations.get(row.serial_number),existingLabel=labelAllocations.get(row.label_number);
+   if(existingSerial)reasons.push('Serial '+row.serial_number+' is already allocated in a production plan');
+   if(registeredSerials.has(row.serial_number))reasons.push('Serial '+row.serial_number+' already exists in the serial registry');
+   if(existingLabel)reasons.push('Label '+row.label_number+' is already allocated in a production plan');
+   if(reasons.length)conflicts.push({label_number:row.label_number,serial_number:row.serial_number,reasons:[...new Set(reasons)],existing_plan_id:existingSerial?.plan_id||existingLabel?.plan_id||''});
+  }
+  return conflicts;
+ };
  const refreshMonitoring=async()=>{
   if(monitoringRefreshRef.current)return;
   monitoringRefreshRef.current=true;
