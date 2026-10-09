@@ -1,9 +1,1 @@
-{
-  "name": "pro-scan",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {"dev":"vite","build":"vite build","preview":"vite preview"},
-  "dependencies": {"@supabase/supabase-js":"^2.58.0","@zxing/browser":"^0.1.5","react":"^19.1.1","react-dom":"^19.1.1"},
-  "devDependencies": {"@vitejs/plugin-react":"^5.0.4","vite":"^7.1.7"}
-}
+{"name":"pro-scan","private":true,"version":"1.0.0","type":"module","scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},"dependencies":{"@supabase/supabase-js":"^2.58.0","@zxing/browser":"^0.1.5","pdfjs-dist":"^5.4.149","react":"^19.1.1","react-dom":"^19.1.1"},"devDependencies":{"@vitejs/plugin-react":"^5.0.4","vite":"^7.1.7"}}
