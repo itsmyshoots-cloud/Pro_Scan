@@ -302,3 +302,106 @@
  .monitoring-live-status>span{display:none}
  .management-filter-bar label{font-size:9px}
 }
+
+
+/* Hourly production planning */
+.planner-panel{max-width:1150px;margin-left:auto;margin-right:auto}
+.planner-subtitle{max-width:760px;margin:5px 0 0;color:#64748b;font-size:12px;line-height:1.5}
+.hourly-target-editor{margin:20px 0;padding:20px;border:1px solid #dbe5f0;border-radius:16px;background:linear-gradient(135deg,#fbfdff,#f6f9fd)}
+.hourly-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}
+.hourly-editor-head h3{margin:4px 0;font-size:18px;color:#0f172a}
+.hourly-editor-head p{margin:4px 0 0;max-width:650px;color:#64748b;font-size:12px;line-height:1.5}
+.shift-time-fields{display:grid;grid-template-columns:repeat(2,minmax(100px,1fr));gap:10px;min-width:260px}
+.shift-time-fields label{font-size:11px}
+.shift-time-fields input{margin-top:5px;padding:9px 10px;font-size:13px}
+.hourly-target-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+.hour-target-field{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px;border:1px solid #e2e8f0;border-radius:11px;background:#fff}
+.hour-target-field>span{font-size:11px;font-weight:850;color:#1e293b}
+.hour-target-field>small{font-size:9px;color:#94a3b8;font-weight:600}
+.hour-target-field input{margin:2px 0 0;padding:8px 9px;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.hourly-target-summary{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:11px;background:#fff}
+.hourly-target-summary>div{display:flex;flex-direction:column;gap:3px}
+.hourly-target-summary>div span{font-size:10px;color:#64748b;font-weight:700}
+.hourly-target-summary>div strong{font-size:20px;color:#0f172a;font-variant-numeric:tabular-nums}
+.hourly-target-summary>.target-match,.hourly-target-summary>.target-mismatch{margin-left:auto;font-size:11px;font-weight:800}
+.target-match{color:#047857}.target-mismatch{color:#b45309}
+.database-conflicts{margin-top:12px;padding:13px;border:1px solid #fecaca;border-radius:12px;background:#fff7f7;color:#991b1b}
+.database-conflicts>div:first-child{display:flex;flex-direction:column;gap:4px}
+.database-conflicts>div:first-child strong{font-size:13px}
+.database-conflicts>div:first-child span{font-size:11px;color:#b91c1c}
+.conflict-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:10px 0;max-height:230px;overflow:auto}
+.conflict-list>div{display:flex;flex-direction:column;gap:3px;padding:8px;border:1px solid #fee2e2;border-radius:8px;background:#fff}
+.conflict-list b{font-size:11px;overflow-wrap:anywhere}
+.conflict-list span,.conflict-list small{font-size:9px;color:#991b1b}
+.database-conflicts>small{font-size:10px;color:#991b1b}
+.database-clear{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:10px 12px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4}
+.database-clear strong{font-size:11px;color:#166534}
+.database-clear span{font-size:10px;color:#15803d}
+.planner-panel .upload>p{font-size:12px;line-height:1.5}
+.planner-panel .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.planner-panel .actions .primary{min-width:240px}
+
+/* Clickable active-line cards and hourly target vs actual report */
+.line-monitor-card{cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.line-monitor-card:hover,.line-monitor-card:focus-visible{border-color:#93c5fd;box-shadow:0 8px 22px rgba(37,99,235,.1);outline:none;transform:translateY(-1px)}
+.line-monitor-card.is-selected{border-color:#60a5fa;background:#f7fbff;box-shadow:0 0 0 2px rgba(96,165,250,.14)}
+.hourly-detail-panel{margin:0 0 15px;padding:18px;scroll-margin-top:12px}
+.hourly-detail-panel .panel-head{align-items:flex-start}
+.hourly-detail-panel .panel-head h3{margin:4px 0;font-size:18px}
+.hourly-detail-panel .panel-head p{margin:5px 0 0;color:#64748b;font-size:11px}
+.hourly-panel-subtitle{max-width:650px}
+.hourly-report-controls{display:grid;grid-template-columns:minmax(210px,1fr) minmax(190px,1fr) auto;gap:12px;align-items:end;padding:13px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}
+.hourly-report-controls label{display:block;font-size:10px}
+.hourly-report-controls select{margin-top:5px;padding:9px 10px;font-size:11px}
+.hourly-plan-summary{display:flex;flex-direction:column;gap:4px;min-width:0;padding:1px 3px}
+.hourly-plan-summary strong{font-size:12px;color:#0f172a}
+.hourly-plan-summary span,.hourly-plan-summary small{font-size:10px;color:#64748b;overflow-wrap:anywhere}
+.report-download{white-space:nowrap;padding:10px 12px;font-size:11px}
+.report-download:disabled{opacity:.45;cursor:not-allowed}
+.hourly-target-warning{font-size:11px;background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.hourly-chart-legend{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin:15px 0 8px;color:#64748b;font-size:10px}
+.hourly-chart-legend>span{display:flex;align-items:center;gap:6px}
+.hourly-chart-legend i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.legend-planned{background:#93c5fd}.legend-actual{background:#10b981}
+.hourly-chart-legend .hourly-date-note{margin-left:auto}
+.hourly-chart-scroll{width:100%;overflow-x:auto;padding:10px 4px 7px;border:1px solid #edf1f6;border-radius:12px;background:#fff}
+.hourly-chart{display:flex;align-items:stretch;gap:7px;min-height:245px;padding:7px 5px 2px}
+.hourly-chart-column{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:flex-end;min-width:48px;max-width:95px}
+.hourly-bar-values{display:flex;justify-content:center;gap:10px;width:100%;margin-bottom:5px;color:#64748b;font-size:9px;font-variant-numeric:tabular-nums}
+.hourly-bars{display:flex;align-items:flex-end;justify-content:center;gap:7px;width:100%;height:160px;padding:0 5px;border-bottom:1px solid #cbd5e1;background:repeating-linear-gradient(to top,transparent 0,transparent 39px,#f1f5f9 40px)}
+.hourly-bar{width:min(24px,33%);min-height:0;border-radius:5px 5px 0 0;transition:height .2s ease}
+.planned-hour-bar{background:#93c5fd}.actual-hour-bar{background:#10b981}
+.hourly-hour-label{margin-top:8px;font-size:10px;color:#334155;white-space:nowrap}
+.hourly-chart-column>small{margin-top:4px;font-size:9px;color:#64748b;font-variant-numeric:tabular-nums}
+.variance-negative{color:#b91c1c!important;font-weight:800}
+.variance-positive{color:#047857!important;font-weight:800}
+.hourly-table-wrap{margin-top:12px;max-height:270px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px}
+.hourly-report-table{width:100%;min-width:420px}
+.hourly-report-table th,.hourly-report-table td{padding:9px 12px;font-size:10px}
+.hourly-report-table th{position:sticky;top:0;background:#f8fafc;z-index:1}
+.hourly-report-table td:nth-child(n+2){font-variant-numeric:tabular-nums}
+@media(max-width:900px){
+ .hourly-editor-head{flex-direction:column}
+ .shift-time-fields{min-width:0;width:min(100%,400px)}
+ .hourly-target-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .hourly-report-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .hourly-plan-summary{grid-column:1}
+ .report-download{grid-column:2;grid-row:1 / span 2}
+}
+@media(max-width:600px){
+ .hourly-target-editor{padding:12px}
+ .hourly-target-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .hour-target-field{padding:8px}
+ .hourly-target-summary{align-items:flex-start;gap:12px;padding:10px}
+ .hourly-target-summary>div strong{font-size:17px}
+ .hourly-target-summary>.target-match,.hourly-target-summary>.target-mismatch{width:100%;margin-left:0}
+ .conflict-list{grid-template-columns:1fr}
+ .planner-panel .actions .primary{width:100%;min-width:0}
+ .hourly-detail-panel{padding:12px}
+ .hourly-report-controls{grid-template-columns:1fr}
+ .hourly-plan-summary,.report-download{grid-column:auto;grid-row:auto}
+ .report-download{width:100%}
+ .hourly-chart{min-height:220px}
+ .hourly-bars{height:135px}
+ .hourly-chart-legend .hourly-date-note{width:100%;margin-left:0}
+}
