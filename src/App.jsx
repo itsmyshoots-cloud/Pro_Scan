@@ -116,14 +116,14 @@ export default function App(){
  const scan=async value=>{
   if(scanInFlightRef.current||!selectedPlan||!value)return;
   const raw=String(value).trim().toUpperCase();if(!raw)return;
-  const token=raw.match(/\\bP-\\d+\\b|\\bGM\\d+\\b/i),clean=(token?.[0]||raw).toUpperCase();
+  const token=raw.match(/\bP-\d+\b|\bGM\d+\b/i),clean=(token?.[0]||raw).toUpperCase();
   const nowMs=Date.now();if(lastScanRef.current.value===clean&&nowMs-lastScanRef.current.at<700)return;
   lastScanRef.current={value:clean,at:nowMs};
   scanInFlightRef.current=true;
   setLastScanAt(new Date(nowMs).toISOString());
   try{
    const lookup=supabase.from('plan_serials').select('*').eq('plan_id',selectedPlan.id);
-   const lookupQuery=/^(P-\\d+|GM\\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
+   const lookupQuery=/^(P-\d+|GM\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
    const {data,error}=await lookupQuery.maybeSingle();
    if(error){setMessage('Could not check serial '+clean+': '+error.message);cameraLastCodeRef.current='';return;}
    const recordEvent=async(status,serialValue)=>{
@@ -176,7 +176,7 @@ export default function App(){
     scannerControls=await reader.decodeFromConstraints({audio:false,video:{facingMode:{ideal:'environment'}}},video,(result)=>{
      if(disposed||!result||scanInFlightRef.current)return;
      const text=result.getText();
-     const token=String(text).trim().toUpperCase().match(/\\bP-\\d+\\b|\\bGM\\d+\\b/i);
+     const token=String(text).trim().toUpperCase().match(/\bP-\d+\b|\bGM\d+\b/i);
      const code=(token?.[0]||String(text).trim()).toUpperCase();
      if(!code||cameraLastCodeRef.current===code)return;
      cameraLastCodeRef.current=code;
