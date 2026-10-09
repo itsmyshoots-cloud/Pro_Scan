@@ -8,7 +8,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
 
 const lines=['Line 1','Line 2','Line 3'];
 function createHourlyTargets(start='09:00',end='18:00',previous=[]){
- const toMinutes=value=>{const match=/^(\\d{2}):(\\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m===0?h*60+m:NaN;};
+ const toMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m===0?h*60+m:NaN;};
  const startMinutes=toMinutes(start),endMinutes=toMinutes(end);
  if(!Number.isFinite(startMinutes)||!Number.isFinite(endMinutes)||endMinutes<=startMinutes)return [];
  const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]));
@@ -24,13 +24,12 @@ function localDateKey(date){
 }
 function csvCell(value){return '"'+String(value??'').replace(/"/g,'""')+'"';}
 function downloadCsv(filename,headers,rows){
- const csv='\\uFEFF'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\\r\\n');
+ const csv='\uFEFF'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n');
  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
  const url=URL.createObjectURL(blob),anchor=document.createElement('a');
  anchor.href=url;anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-
 function pairsFromText(text){
  const labels=[...text.matchAll(/\bP-\d+\b/gi)].map(m=>m[0].toUpperCase());
  const serials=[...text.matchAll(/\bGM\d+\b/gi)].map(m=>m[0].toUpperCase());
@@ -175,6 +174,38 @@ export default function App(){
   return {line,plans:linePlans.length,target,scanned,pending,percent:target?Math.min(100,Math.round(scanned/target*100)):0};
  }),[activePlans,monitoringSerials]);
  const filteredPlans=useMemo(()=>plans.filter(plan=>planStatusFilter==='all'||plan.status===planStatusFilter),[plans,planStatusFilter]);
+
+ const hourlyTargetTotal=useMemo(()=>hourlyTargets.reduce((sum,row)=>sum+Math.max(0,Number(row.planned_qty||0)),0),[hourlyTargets]);
+ const selectedLinePlans=useMemo(()=>activePlans.filter(plan=>plan.production_line===selectedMonitoringLine),[activePlans,selectedMonitoringLine]);
+ const selectedHourlyPlan=useMemo(()=>selectedLinePlans.find(plan=>plan.id===selectedMonitoringPlanId)||selectedLinePlans[0]||null,[selectedLinePlans,selectedMonitoringPlanId]);
+ const hourlyReportRows=useMemo(()=>{
+  if(!selectedHourlyPlan)return [];
+  const buckets=new Map();
+  const targets=Array.isArray(selectedHourlyPlan.hourly_targets)?selectedHourlyPlan.hourly_targets:[];
+  for(const item of targets){
+   const hour=String(item.hour||item.start_time||'').slice(0,5);
+   if(!/^\d{2}:\d{2}$/.test(hour))continue;
+   buckets.set(hour,{hour,planned_qty:Number(item.planned_qty||0),actual_qty:0});
+  }
+  for(const serial of monitoringSerials){
+   if(serial.plan_id!==selectedHourlyPlan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
+   const scannedAt=new Date(serial.scanned_at);
+   if(localDateKey(scannedAt)!==selectedHourlyPlan.production_date)continue;
+   const hour=String(scannedAt.getHours()).padStart(2,'0')+':00';
+   const bucket=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
+   bucket.actual_qty+=1;buckets.set(hour,bucket);
+  }
+  return [...buckets.values()].sort((a,b)=>a.hour.localeCompare(b.hour)).map(row=>({...row,variance:row.actual_qty-row.planned_qty}));
+ },[selectedHourlyPlan,monitoringSerials]);
+ const hourlyChartMax=useMemo(()=>Math.max(1,...hourlyReportRows.flatMap(row=>[row.planned_qty,row.actual_qty])),[hourlyReportRows]);
+ const downloadHourlyReport=()=>{
+  if(!selectedHourlyPlan||!hourlyReportRows.length)return;
+  const headers=['Product','Brand','Model','Production Date','Production Line','Plan Status','Hour','Planned Quantity','Actual Scanned','Variance (Actual - Planned)'];
+  const data=hourlyReportRows.map(row=>[selectedHourlyPlan.product_name,selectedHourlyPlan.brand||'',selectedHourlyPlan.model,selectedHourlyPlan.production_date,selectedHourlyPlan.production_line,selectedHourlyPlan.status,row.hour, row.planned_qty,row.actual_qty,row.variance]);
+  const slug=String(selectedHourlyPlan.product_name||'production').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  downloadCsv('hourly-production-'+slug+'-'+selectedHourlyPlan.production_date+'.csv',headers,data);
+ };
+
 
 
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
