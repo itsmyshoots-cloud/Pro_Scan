@@ -112,7 +112,7 @@ export default function App(){
  };
  useEffect(()=>{load()},[]);
  useEffect(()=>{const timer=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(timer)},[]);
- useEffect(()=>{if(!['dashboard','live-monitoring','manage'].includes(view))return;void refreshMonitoring();const timer=setInterval(()=>{void refreshMonitoring()},8000);return()=>clearInterval(timer)},[view,plans.length]);
+ useEffect(()=>{if(!['dashboard','live-monitoring','manage'].includes(view))return;void refreshMonitoring();const timer=setInterval(()=>{void refreshMonitoring()},8000);return()=>clearInterval(timer)},[view,plans.map(plan=>plan.id+':'+plan.status).join('|')]);
  useEffect(()=>{
   if(view!=='operator'||!selectedPlan){setPlanSerials([]);setDuplicateScans([]);return;}
   refreshPlanMetrics(selectedPlan);
