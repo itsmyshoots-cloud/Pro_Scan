@@ -211,27 +211,44 @@ export default function App(){
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
  const importFile=async e=>{
   const input=e.currentTarget,f=input.files?.[0];if(!f)return;
-  setBusy(true);setRows([]);setSourceFile('');setFileInfo('');setMessage('Loading '+f.name+'…');
+  setBusy(true);setRows([]);setImportConflicts([]);setSourceFile('');setFileInfo('');setMessage('Reading '+f.name+'…');
   try{
    let parsed,pages=0;
    if(f.name.toLowerCase().endsWith('.pdf')){const result=await parseSupplierPdf(f,setMessage);parsed=result.rows;pages=result.pages;}
    else parsed=pairsFromText(await f.text());
    validatePairs(parsed);setRows(parsed);setSourceFile(f.name);setFileInfo(pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file');
-   setMessage(parsed.length.toLocaleString()+' serial-label pairs loaded from '+f.name+'.');
+   setMessage('Checking '+parsed.length.toLocaleString()+' serial-label pairs against existing production data…');
+   const conflicts=await checkDatabaseForConflicts(parsed);
+   setImportConflicts(conflicts);
+   if(conflicts.length){
+    setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database. Review the conflicts below before uploading a new batch.');
+   }else{
+    setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
+   }
    if(Number(form.planned_qty)>parsed.length)setMessage(parsed.length.toLocaleString()+' pairs loaded, but planned quantity exceeds the available serial count.');
-  }catch(error){setMessage(error?.message||'Could not read the supplier file.');}
+  }catch(error){setRows([]);setImportConflicts([]);setMessage(error?.message||'Could not read or validate the supplier file.');}
   finally{setBusy(false);input.value='';}
  };
  const createPlan=async()=>{
   const qty=Number(form.planned_qty);
   if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
   if(!Number.isInteger(qty)||qty<1)return setMessage('Planned quantity must be a whole number greater than zero.');
+  if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
+  if(hourlyTargetTotal!==qty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal total planned quantity ('+qty.toLocaleString()+').');
   if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
   if(qty>rows.length)return setMessage('Planned quantity ('+qty.toLocaleString()+') exceeds available serials ('+rows.length.toLocaleString()+').');
+  if(importConflicts.length)return setMessage('Plan creation blocked: '+importConflicts.length.toLocaleString()+' serial/label pairs in this upload already exist in the database.');
   const chosen=rows.slice(0,qty);
   try{validatePairs(chosen);}catch(error){return setMessage(error.message);}
-  setBusy(true);setMessage('Creating plan and allocating '+qty.toLocaleString()+' serials…');
-  const {data:plan,error:planError}=await supabase.from('production_plans').insert({...form,brand:form.brand.trim()||'Unspecified',planned_qty:qty,status:'draft'}).select().single();
+  setBusy(true);setMessage('Rechecking uploaded batch against the database…');
+  try{
+   const conflicts=await checkDatabaseForConflicts(rows);
+   setImportConflicts(conflicts);
+   if(conflicts.length){setBusy(false);return setMessage('Plan creation blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');}
+  }catch(error){setBusy(false);return setMessage(error?.message||'Could not validate serial uniqueness. No production plan was created.');}
+  setMessage('Creating plan and allocating '+qty.toLocaleString()+' serials…');
+  const hourlyPayload=hourlyTargets.map(row=>({hour:row.hour,planned_qty:Number(row.planned_qty||0)}));
+  const {data:plan,error:planError}=await supabase.from('production_plans').insert({...form,brand:form.brand.trim()||'Unspecified',planned_qty:qty,hourly_targets:hourlyPayload,status:'draft'}).select().single();
   if(planError){setBusy(false);return setMessage('Could not create plan: '+planError.message);}
   const payload=chosen.map((r,i)=>({...r,plan_id:plan.id,sequence_no:i+1}));
   const {error:serialError}=await supabase.from('plan_serials').insert(payload);
