@@ -39,7 +39,7 @@ function validatePairs(parsed){
 export default function App(){
  const [view,setView]=useState('dashboard'); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const [operator,setOperator]=useState('Operator'); const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null);
+ const [operator,setOperator]=useState('Operator'); const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const lastScanRef=useRef({value:'',at:0});
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(50);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  useEffect(()=>{load()},[]);
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
@@ -74,7 +74,61 @@ export default function App(){
   if(activateError){setBusy(false);await load();return setMessage('Serials were allocated, but activation failed: '+activateError.message+'. Ask an admin to review the draft.');}
   await load();setSelectedPlan(activePlan);setBusy(false);setMessage('Plan created with '+payload.length.toLocaleString()+' allocated serials.');setView('plans');
  };
- const scan=async value=>{if(!selectedPlan||!value)return; const clean=value.trim(); const {data}=await supabase.from('plan_serials').select('*').eq('plan_id',selectedPlan.id).eq('serial_number',clean).maybeSingle(); if(!data){setMessage(`NOT PLANNED: ${clean}`);return} if(data.status==='scanned'){setMessage(`DUPLICATE: ${clean}`);return} const {error}=await supabase.from('plan_serials').update({status:'scanned',scanned_at:new Date().toISOString(),scanned_by:operator}).eq('id',data.id); setMessage(error?error.message:`✓ Scanned ${clean}`)};
+ const scan=async value=>{
+  if(!selectedPlan||!value)return;
+  const raw=String(value).trim().toUpperCase();
+  if(!raw)return;
+  // Supplier labels can encode either the P-label or the GM serial (or both in a QR payload).
+  const token=raw.match(/\bP-\d+\b|\bGM\d+\b/i);
+  const clean=(token?.[0]||raw).toUpperCase();
+  const now=Date.now();
+  if(lastScanRef.current.value===clean&&now-lastScanRef.current.at<1200)return;
+  lastScanRef.current={value:clean,at:now};
+
+  let {data,error}=await supabase.from('plan_serials').select('*')
+   .eq('plan_id',selectedPlan.id).eq('serial_number',clean).maybeSingle();
+  if(error){setMessage('Could not check serial '+clean+': '+error.message);return;}
+  if(!data){
+   const labelLookup=await supabase.from('plan_serials').select('*')
+    .eq('plan_id',selectedPlan.id).eq('label_number',clean).maybeSingle();
+   data=labelLookup.data;
+   error=labelLookup.error;
+  }
+  if(error){setMessage('Could not check label '+clean+': '+error.message);return;}
+
+  const recordEvent=async(status,serialValue)=>{
+   const {error:eventError}=await supabase.from('scan_events').insert({
+    serial_number:serialValue||clean,
+    operator_name:operator,
+    production_line:selectedPlan.production_line||null,
+    scan_status:status
+   });
+   return eventError;
+  };
+
+  if(!data){
+   const logError=await recordEvent('missing',clean);
+   setMessage('NOT REGISTERED IN THIS PLAN: '+clean+(logError?' (scan event could not be saved)':''));
+   return;
+  }
+  if(data.status==='scanned'){
+   await recordEvent('duplicate',data.serial_number);
+   setMessage('DUPLICATE SCAN: '+data.serial_number+' · Label '+(data.label_number||clean));
+   return;
+  }
+
+  const {data:updated,error:updateError}=await supabase.from('plan_serials')
+   .update({status:'scanned',scanned_at:new Date().toISOString(),scanned_by:operator})
+   .eq('id',data.id).eq('status','pending').select('id').maybeSingle();
+  if(updateError){setMessage('Could not record scan: '+updateError.message);return;}
+  if(!updated){
+   await recordEvent('duplicate',data.serial_number);
+   setMessage('DUPLICATE SCAN: '+data.serial_number+' · Label '+(data.label_number||clean));
+   return;
+  }
+  const eventError=await recordEvent('success',data.serial_number);
+  setMessage('✓ REGISTERED & SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—')+(eventError?' (scan event logging failed)':''));
+ };
  const startCamera=async()=>{setCamera(true); const r=new BrowserMultiFormatReader(); readerRef.current=r; try{await r.decodeFromVideoDevice(undefined,videoRef.current,(result)=>{if(result){scan(result.getText());}})}catch(e){setMessage('Camera could not start. Check browser camera permission.')}};
  const stopCamera=()=>{try{readerRef.current?.reset()}catch{} setCamera(false)};
  return <div className='app'><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span><button onClick={()=>setView('dashboard')}>Dashboard</button><button onClick={()=>setView('planner')}>Production Planner</button><button onClick={()=>setView('operator')}>Operator</button></div></header>
