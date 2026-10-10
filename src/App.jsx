@@ -128,7 +128,7 @@ export default function App({user}){
  const [usersNotice,setUsersNotice]=useState('');
  const [newUserEmail,setNewUserEmail]=useState('');
  const [newUserRole,setNewUserRole]=useState('operator');
- const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
+ const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
  const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
@@ -589,6 +589,8 @@ export default function App({user}){
   setMessage('Starting camera…');setCamera(true);
  };
  const stopCamera=()=>{try{readerRef.current?.reset()}catch{}setCamera(false)};
+ useEffect(()=>{if(view!=='operator'){if(camera)stopCamera();return;}if(!selectedPlan||showPlanSetup)return;void startCamera();const shift=getPlanShiftWindow(selectedPlan),current=new Date(),minutes=getLocalMinutes(current);if(selectedPlan.production_date===localDateKey(current)&&shift&&minutes<shift.start){const timer=setTimeout(()=>void startCamera(),Math.max(1000,(shift.start-minutes)*60000+1200));return()=>clearTimeout(timer);}},[view,selectedPlan?.id,showPlanSetup]);
+ useEffect(()=>{if(!duplicateWarning)return;const timer=setTimeout(()=>setDuplicateWarning(null),4200);return()=>clearTimeout(timer);},[duplicateWarning]);
 
  const callAppAuth = async payload => {
   const {data,error}=await supabase.functions.invoke('app-auth',{body:payload});
@@ -800,36 +802,65 @@ export default function App({user}){
    {usersLoading?<div className='empty'>Loading user accounts…</div>:roleUsers.length?<div className='user-admin-table-wrap'><table className='user-admin-table'><thead><tr><th>Account</th><th>Role</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead><tbody>{roleUsers.map(account=>{const isSelf=String(account.email||'').toLowerCase()===String(user?.email||'').toLowerCase();return <tr key={account.id}><td><strong>{account.email}</strong>{isSelf&&<span className='user-self-tag'>You</span>}</td><td><select value={account.role} disabled={usersBusy||isSelf} onChange={e=>void changeRoleUser(account.id,e.target.value)} aria-label={'Role for '+account.email}><option value='super_admin'>Super Admin</option><option value='planner'>Planner</option><option value='operator'>Operator</option></select></td><td><span className={account.password_configured?'user-password-set':'user-password-pending'}>{account.password_configured?'Password set':'Setup pending'}</span></td><td><span className={account.is_active?'user-state-active':'user-state-inactive'}>{account.is_active?'Active':'Inactive'}</span></td><td><div className='user-admin-row-actions'><button disabled={usersBusy||isSelf} onClick={()=>void resetRoleUserPassword(account)}>Reset password</button><button className={account.is_active?'user-deactivate':''} disabled={usersBusy||isSelf} onClick={()=>void toggleRoleUserActive(account)}>{account.is_active?'Deactivate':'Activate'}</button></div></td></tr>;})}</tbody></table></div>:<div className='empty'>No user accounts found.</div>}
   </section>
  </main>}
- {view==='operator'&&<main><section className='operator-card'>
- <div className='operator-clock'><div><span className='eyebrow'>CURRENT DATE & TIME</span><strong>{now.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</strong></div><b>{now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})}</b></div>
- <div className='operator-top'><div><span className='eyebrow'>OPERATOR SCAN</span><h2>{selectedPlan?.product_name||'Select a production plan and shift'}</h2><p>{selectedPlan?(selectedPlan.brand||'—')+' · '+selectedPlan.model+' · '+selectedPlan.production_line:'Choose the exact production plan and shift you are working on.'}</p></div></div>
- <div className='operator-plan-picker'>
-  <label>Production plan<select value={selectedPlan?.id||''} onChange={e=>{const plan=operatorEligiblePlans.find(item=>item.id===e.target.value)||null;setSelectedPlan(plan);setDetailsPanel('');setDuplicateWarning(null);setMessage('');if(plan)void refreshPlanMetrics(plan);}}>
-   <option value=''>Choose a specific production plan</option>
-   {operatorEligiblePlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_date} · {plan.production_line} · {planShiftLabel(plan)} · {plan.brand||'—'} · {plan.product_name} · {plan.model} · {Number(plan.planned_qty||0).toLocaleString()} units · #{plan.id.slice(0,8)} · {plan.status.toUpperCase()}</option>)}
-  </select><small>Plans on the same line or product remain separate. Choose the exact shift, target quantity and plan ID.</small></label>
- </div>
- {selectedPlan&&<><div className='operator-plan-strip'><div><span className='eyebrow'>SELECTED PLAN</span><strong>{selectedPlan.brand||'—'} · {selectedPlan.product_name} · {selectedPlan.model}</strong><span>{selectedPlan.production_line} · Production date: {selectedPlan.production_date}</span></div><div className='plan-stamp'><span>Plan status</span><b>{selectedPlan.status}</b></div></div>
-  <div className='operator-active-progress'><div className='operator-active-progress-head'><span>ACTIVE PRODUCTION PROGRESS</span><strong>{selectedPlan.planned_qty?Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100):0}% complete</strong></div><div className='progress-track'><div className='progress-fill' style={{width:(selectedPlan.planned_qty?Math.min(100,scannedSerials.length/Number(selectedPlan.planned_qty)*100):0)+'%'}}/></div><div className='operator-active-progress-foot'><span>{scannedSerials.length.toLocaleString()} units scanned</span><span>{pendingSerials.length.toLocaleString()} remaining of {Number(selectedPlan.planned_qty||0).toLocaleString()}</span></div></div>
-  <div className='operator-dashboard-grid'><div className='operator-progress-pane'><div className='operator-metrics'>
-   <button className='metric-tile' onClick={()=>setDetailsPanel(detailsPanel==='planned'?'':'planned')}><span>Total planned quantity</span><b>{Number(selectedPlan.planned_qty||0).toLocaleString()}</b><small>View planned serial list</small></button>
-   <button className='metric-tile metric-good' onClick={()=>setDetailsPanel(detailsPanel==='scanned'?'':'scanned')}><span>Actual scanned</span><b>{scannedSerials.length.toLocaleString()}</b><small>{selectedPlan.planned_qty?Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100):0}% complete · View scanned items</small></button>
-   <button className='metric-tile metric-danger' onClick={()=>setDetailsPanel(detailsPanel==='duplicates'?'':'duplicates')}><span>Duplicate serials</span><b>{uniqueDuplicateSerials.length.toLocaleString()}</b><small>{duplicateScans.length.toLocaleString()} duplicate scan events · Click to view</small></button>
-   <button className='metric-tile metric-warn' onClick={()=>setDetailsPanel(detailsPanel==='missing'?'':'missing')}><span>Missing / not yet scanned</span><b>{pendingSerials.length.toLocaleString()}</b><small>Remaining planned serials · Click to view</small></button>
+ {view==='operator'&&<main className='operator-workstation'>
+ <section className='operator-workstation-top'>
+  <div className={'operator-assignment-card '+(selectedPlan&&!showPlanSetup?'has-plan':'')}>
+   {selectedPlan&&!showPlanSetup?<div className='operator-selected-assignment'>
+    <div className='operator-assignment-heading'><span className='eyebrow'>PRODUCTION ASSIGNMENT</span><span className={'operator-plan-status status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</span></div>
+    <strong>{selectedPlan.brand||'—'} · {selectedPlan.product_name} · {selectedPlan.model}</strong>
+    <div className='operator-assignment-details'><span>{selectedPlan.production_line}</span><i/> <span>{planShiftLabel(selectedPlan)}</span><i/> <span>{Number(selectedPlan.planned_qty||0).toLocaleString()} units</span><i/> <span>#{selectedPlan.id.slice(0,8)}</span></div>
+    <button className='operator-change-plan' onClick={()=>{stopCamera();setShowPlanSetup(true);setMessage('Select the production plan for this shift.');}}>Change plan</button>
+   </div>:<div className='operator-plan-setup'>
+    <div className='operator-assignment-heading'><span className='eyebrow'>SET PRODUCTION PLAN</span><span className='operator-setup-step'>Choose once · scan continuously</span></div>
+    <label>Today's production plan<select value={selectedPlan?.id||''} onChange={e=>{
+      const plan=operatorEligiblePlans.find(item=>item.id===e.target.value)||null;
+      stopCamera();setSelectedPlan(plan);setShowPlanSetup(!plan);setDetailsPanel('');setDuplicateWarning(null);
+      setMessage(plan?'Selected '+plan.production_line+' · '+planShiftLabel(plan)+'. Camera will start automatically.':'Choose one of today’s plans to begin.');
+      if(plan)void refreshPlanMetrics(plan);
+    }}>
+     <option value=''>Choose line / product / shift for today</option>
+     {operatorEligiblePlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_line} · {planShiftLabel(plan)} · {plan.product_name} · {plan.model} · {Number(plan.planned_qty||0).toLocaleString()} units · #{plan.id.slice(0,8)}</option>)}
+    </select></label>
+    {selectedPlan&&<button className='operator-keep-plan' onClick={()=>{setShowPlanSetup(false);setMessage('');void startCamera();}}>Continue selected plan</button>}
+    {!selectedPlan&&<p>Select today’s plan once. Pro Scan will open the camera for QR scanning automatically.</p>}
+   </div>}
   </div>
-  {detailsPanel&&<section className='serial-details'><div className='panel-head'><div><span className='eyebrow'>PLAN SERIAL REPORT</span><h3>{detailsPanel==='planned'?'All planned serials':detailsPanel==='scanned'?'Successfully scanned serials':detailsPanel==='duplicates'?'Duplicate serial scan events':'Missing / not yet scanned serials'}</h3></div><button onClick={()=>setDetailsPanel('')}>Close</button></div>
-   {detailsPanel==='duplicates'?(duplicateScans.length?<div className='table-scroll'><table><thead><tr><th>Serial number</th><th>Detected date & time</th><th>Operator</th></tr></thead><tbody>{duplicateScans.map((d,i)=><tr key={d.id||i}><td><b>{d.serial_number}</b></td><td>{d.scanned_at?new Date(d.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{d.operator_name||'—'}</td></tr>)}</tbody></table></div>:<div className='empty'>No duplicate scans recorded for this plan.</div>):
-   <div className='table-scroll'><table><thead><tr><th>#</th><th>Label number</th><th>Serial number</th><th>Status</th><th>Scanned date & time</th><th>Operator</th></tr></thead><tbody>{(detailsPanel==='planned'?planSerials:detailsPanel==='scanned'?scannedSerials:pendingSerials).map((r,i)=><tr key={r.id}><td>{r.sequence_no||i+1}</td><td>{r.label_number||'—'}</td><td><b>{r.serial_number}</b></td><td><span className={r.status==='scanned'?'badge':'status-pill'}>{r.status}</span></td><td>{r.scanned_at?new Date(r.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{r.scanned_by||'—'}</td></tr>)}</tbody></table></div>}
-  </section>}
-  </div><div className='operator-scanner-pane'><div className='scanner'>{camera?<video ref={videoRef} autoPlay muted playsInline webkit-playsinline='true'/>:<div className='camera-placeholder'><span className='camera-icon'>▣</span><b>Mobile camera scanner</b><span>Point the camera at the serial-number barcode.</span></div>}</div>
-  <div className='scan-actions'>{camera?<button className='primary' onClick={stopCamera}>Stop Camera Scan</button>:<button className='primary scan-start' onClick={startCamera}>Start Camera Scan</button>}<span className='scan-instructions'>Manual serial entry is disabled. Use the device camera to scan labels.</span></div>
-  <div className='last-scanned-banner'><div><span>LAST SCANNED SERIAL NUMBER</span><strong>{lastScannedRecord?.serial_number||'No serial scanned yet'}</strong>{lastScannedRecord?.label_number&&<small>Label {lastScannedRecord.label_number}</small>}</div><div className='last-scanned-at'><span>Scanned at</span><b>{lastScannedRecord?.scanned_at?new Date(lastScannedRecord.scanned_at).toLocaleString('en-IN'):'—'}</b></div></div>
-  <div className={'status '+(duplicateWarning?'status-danger':'')}>{message||'Ready to scan'}</div>
-  <div className='last-scan-time'><span>Last scan attempt</span><b>{lastScanAt?new Date(lastScanAt).toLocaleString('en-IN'):'No scan yet'}</b><span className='live-refresh'>Progress refreshes automatically</span></div>
-  </div></div>
- </>}
- {!selectedPlan&&<div className='notice'>{operatorEligiblePlans.length?'Select a production plan above to load its serial allocation and scanner.':'No Draft or Active plans are available for scanning.'}</div>}
- </section></main>}
- {duplicateWarning&&<div className='warning-backdrop' role='alertdialog' aria-modal='true' aria-labelledby='duplicate-warning-title'><section className='warning-dialog'><div className='warning-symbol'>!</div><span className='eyebrow'>OPERATOR ATTENTION REQUIRED</span><h2 id='duplicate-warning-title'>Duplicate serial detected</h2><p>This serial has already been scanned for the selected production plan. Do not apply the same label again.</p><div className='warning-serial'><span>Serial number</span><b>{duplicateWarning.serial_number}</b><span>Label number</span><b>{duplicateWarning.label_number}</b></div><p className='warning-time'>Detected: {new Date(duplicateWarning.detected_at).toLocaleString('en-IN')}</p><button className='warning-ack' onClick={()=>setDuplicateWarning(null)}>Acknowledge warning</button></section></div>}
+  <div className='operator-clock-block'>
+   <div className='operator-clock-date'><span>CURRENT DATE</span><strong>{now.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</strong></div>
+   <div className='operator-clock-time'><span>CURRENT TIME</span><b>{now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})}</b></div>
+  </div>
+ </section>
+ {selectedPlan&&!showPlanSetup?<section className='operator-workstation-grid'>
+  <section className='operator-camera-panel'>
+   <div className='operator-camera-heading'><div><span>SCAN SERIAL QR CODE</span><small>Keep the barcode inside the camera frame</small></div><span className={camera?'operator-camera-live':'operator-camera-wait'}><i/> {camera?'CAMERA LIVE':'CAMERA STARTING'}</span></div>
+   <div className='scanner operator-live-scanner'>{camera?<video ref={videoRef} autoPlay muted playsInline webkit-playsinline='true'/>:<div className='camera-placeholder'><span className='camera-icon'>⌗</span><b>{message||'Preparing camera…'}</b><span>The camera will start automatically for the selected shift.</span></div>}</div>
+   <div className={'operator-scan-state '+(duplicateWarning?'is-duplicate':camera?'is-ready':'is-waiting')}><i/>{duplicateWarning?<><strong>Duplicate serial detected — do not apply this label.</strong><span>Alert clears automatically.</span></>:<><strong>{message|| (camera?'READY TO SCAN · Point the camera at a QR code':'Waiting for camera')}</strong><span>{camera?'Every valid scan is recorded automatically.':'Check browser camera permission if the camera does not start.'}</span></>}</div>
+   <div className='operator-last-scan-bar'>
+    <div className='operator-last-serial'><span>LAST SCANNED SERIAL</span><strong>{lastScannedRecord?.serial_number||'Waiting for first scan'}</strong><small>{lastScannedRecord?.label_number?'Label '+lastScannedRecord.label_number:'The scanned serial will appear here.'}</small></div>
+    <div className='operator-last-time'><span>LAST SCAN TIME</span><strong>{lastScannedRecord?.scanned_at?new Date(lastScannedRecord.scanned_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'—'}</strong><small>{lastScanAt?'Attempt '+new Date(lastScanAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'No scan attempt yet'}</small></div>
+   </div>
+   {!camera&&<div className='operator-camera-fallback'><button className='primary' onClick={()=>void startCamera()}>Start camera</button><span>Only use this if automatic camera start was blocked by the browser.</span></div>}
+  </section>
+  <aside className='operator-workstation-side'>
+   <section className='operator-plan-progress-card'>
+    <div className='operator-side-card-heading'><span>PLAN PROGRESS</span><strong>{Number(selectedPlan.planned_qty||0)?Math.min(100,Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100)):0}%</strong></div>
+    <div className='operator-progress-track'><div style={{width:(Number(selectedPlan.planned_qty||0)?Math.min(100,scannedSerials.length/Number(selectedPlan.planned_qty)*100):0)+'%'}}/></div>
+    <div className='operator-progress-numbers'><div><span>Scanned</span><strong>{scannedSerials.length.toLocaleString()}</strong></div><div><span>Remaining</span><strong>{pendingSerials.length.toLocaleString()}</strong></div><div><span>Target</span><strong>{Number(selectedPlan.planned_qty||0).toLocaleString()}</strong></div></div>
+   </section>
+   <div className='operator-workstation-metrics'>
+    <div className='operator-workstation-metric metric-planned'><span>PLANNED QTY</span><strong>{Number(selectedPlan.planned_qty||0).toLocaleString()}</strong><small>Units for this plan</small></div>
+    <div className='operator-workstation-metric metric-scanned'><span>SCANNED</span><strong>{scannedSerials.length.toLocaleString()}</strong><small>{selectedPlan.planned_qty?Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100):0}% complete</small></div>
+    <div className='operator-workstation-metric metric-pending'><span>REMAINING</span><strong>{pendingSerials.length.toLocaleString()}</strong><small>Labels not yet scanned</small></div>
+    <div className='operator-workstation-metric metric-duplicates'><span>DUPLICATE SCANS</span><strong>{duplicateScans.length.toLocaleString()}</strong><small>Duplicate scan events</small></div>
+   </div>
+   <section className='operator-shift-info'>
+    <div><span>SHIFT WINDOW</span><strong>{planShiftLabel(selectedPlan)}</strong></div>
+    <div><span>PRODUCTION LINE</span><strong>{selectedPlan.production_line}</strong></div>
+    <div><span>PLAN STATUS</span><strong className={'operator-status-text status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</strong></div>
+   </section>
+  </aside>
+ </section>:<section className='operator-workstation-empty'><span className='operator-empty-icon'>⌗</span><strong>{selectedPlan?'Confirm the production assignment':'Select today’s production plan to begin'}</strong><span>The clock remains visible. Once a plan is selected, the camera and production status fill this screen automatically.</span></section>}
+</main>}
+{duplicateWarning&&<div className='warning-backdrop' role='alertdialog' aria-modal='true' aria-labelledby='duplicate-warning-title'><section className='warning-dialog'><div className='warning-symbol'>!</div><span className='eyebrow'>OPERATOR ATTENTION REQUIRED</span><h2 id='duplicate-warning-title'>Duplicate serial detected</h2><p>This serial has already been scanned for the selected production plan. Do not apply the same label again.</p><div className='warning-serial'><span>Serial number</span><b>{duplicateWarning.serial_number}</b><span>Label number</span><b>{duplicateWarning.label_number}</b></div><p className='warning-time'>Detected: {new Date(duplicateWarning.detected_at).toLocaleString('en-IN')}</p><p className='warning-auto-dismiss'>This warning clears automatically. Continue scanning after the alert closes.</p></section></div>}
  </div>
 }
