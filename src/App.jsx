@@ -146,9 +146,7 @@ export default function App({user}){
  const [usersBusy,setUsersBusy]=useState(false);
  const [usersError,setUsersError]=useState('');
  const [usersNotice,setUsersNotice]=useState('');
- const [newUserEmail,setNewUserEmail]=useState('');
- const [newUserRole,setNewUserRole]=useState('operator');
- const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
+ const [passwordResetTarget,setPasswordResetTarget]=useState(null); const [passwordResetValue,setPasswordResetValue]=useState(''); const [passwordResetConfirm,setPasswordResetConfirm]=useState(''); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
  const operator='Operator'; const scannerInputRef=useRef(null); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [manageFilters,setManageFilters]=useState({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'}); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false); const productionChannelRef=useRef(null); const realtimeRefreshRef=useRef({});
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
@@ -671,17 +669,6 @@ export default function App({user}){
   finally {setUsersLoading(false);}
  };
  useEffect(()=>{if(view==='users'&&isSuperAdmin)void loadRoleUsers();},[view,isSuperAdmin]);
- const createRoleUser = async event => {
-  event.preventDefault();setUsersBusy(true);setUsersError('');setUsersNotice('');setSetupCredential(null);
-  try {
-   const result=await callAppAuth({action:'create-user',email:newUserEmail.trim().toLowerCase(),role:newUserRole});
-   setSetupCredential({email:result.user.email,code:result.setupCode});
-   setUsersNotice('Account created. Share this one-time setup code with the user through a separate secure channel.');
-   setNewUserEmail('');setNewUserRole('operator');
-   await loadRoleUsers();
-  } catch(error) {setUsersError(error?.message||'Could not create the account.');}
-  finally {setUsersBusy(false);}
- };
  const changeRoleUser = async (id,role) => {
   setUsersBusy(true);setUsersError('');setUsersNotice('');
   try {
@@ -702,18 +689,23 @@ export default function App({user}){
   } catch(error) {setUsersError(error?.message||'Could not update account status.');await loadRoleUsers();}
   finally {setUsersBusy(false);}
  };
- const resetRoleUserPassword = async account => {
-  if(!window.confirm('Generate a new one-time password setup code for '+account.email+'? Their existing sessions will be signed out.'))return;
-  setUsersBusy(true);setUsersError('');setUsersNotice('');setSetupCredential(null);
-  try {
-   const result=await callAppAuth({action:'reset-user-password',userId:account.id});
-   setSetupCredential({email:result.user.email,code:result.setupCode});
-   setUsersNotice('A new one-time setup code has been generated. Share it through a separate secure channel.');
-   await loadRoleUsers();
-  } catch(error) {setUsersError(error?.message||'Could not reset the user password.');}
-  finally {setUsersBusy(false);}
+ const resetRoleUserPassword=account=>{
+  setUsersError('');setUsersNotice('');setPasswordResetTarget(account);setPasswordResetValue('');setPasswordResetConfirm('');
  };
- const roleLabel = value => ({super_admin:'Super Admin',planner:'Planner',operator:'Operator'}[value]||value);
+ const submitRoleUserPasswordReset=async event=>{
+  event.preventDefault();if(!passwordResetTarget)return;
+  if(passwordResetValue.length<10||passwordResetValue.length>200){setUsersError('Choose a password between 10 and 200 characters.');return;}
+  if(passwordResetValue!==passwordResetConfirm){setUsersError('The passwords do not match.');return;}
+  setUsersBusy(true);setUsersError('');setUsersNotice('');
+  try{
+   await callAppAuth({action:'reset-user-password',userId:passwordResetTarget.id,password:passwordResetValue});
+   setUsersNotice('Password updated directly for '+passwordResetTarget.email+'. The user can sign in with the new password.');
+   setPasswordResetTarget(null);setPasswordResetValue('');setPasswordResetConfirm('');
+   await loadRoleUsers();
+  }catch(error){setUsersError(error?.message||'Could not reset the user password.');}
+  finally{setUsersBusy(false);}
+ };
+ const roleLabel = value => ({pending:'Pending assignment',super_admin:'Super Admin',planner:'Planner',operator:'Operator'}[value]||value);
 
  return <div className={'app '+(view==='operator'?'app-operator':'')}><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span>{!isOperatorUser&&<><button className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='manage'?'nav-button is-active':'nav-button'} onClick={()=>setView('manage')}>Manage Production</button><button className={view==='reports'?'nav-button is-active':'nav-button'} onClick={()=>setView('reports')}>Reports</button>{isSuperAdmin&&<button className={view==='users'?'nav-button is-active':'nav-button'} onClick={()=>setView('users')}>User Roles</button>}</>}<button className={view==='operator'?'nav-button is-active':'nav-button'} onClick={()=>setView('operator')}>Operator</button></div></header>
  {view==='dashboard'&&<main className='dashboard-page'>
@@ -851,21 +843,23 @@ export default function App({user}){
 </main>}
  {view==='plans'&&<main><section className='panel'><div className='panel-head'><h2>Plan created</h2><button onClick={()=>setView('dashboard')}>Dashboard</button></div><div className='success'>Production plan is saved as Draft. Open Operator and select this plan during its scheduled shift. It becomes Active only during the shift window.</div></section></main>}
  {view==='users'&&isSuperAdmin&&<main className='user-admin-page'>
-  <section className='user-admin-heading'><div><span className='eyebrow'>ACCESS CONTROL</span><h2>User role configuration</h2><p>Create company accounts, assign roles, and issue one-time password setup codes.</p></div><button className='user-admin-secondary' onClick={()=>void loadRoleUsers()} disabled={usersLoading||usersBusy}>↻ Refresh users</button></section>
+  <section className='user-admin-heading'><div><span className='eyebrow'>ACCESS CONTROL</span><h2>User role configuration</h2><p>Users register with their company email. Assign a role here to grant access to the relevant Pro Scan tabs.</p></div><button className='user-admin-secondary' onClick={()=>void loadRoleUsers()} disabled={usersLoading||usersBusy}>↻ Refresh users</button></section>
   {usersError&&<div className='auth-error user-admin-message' role='alert'>{usersError}</div>}
   {usersNotice&&<div className='auth-notice user-admin-message' role='status'>{usersNotice}</div>}
-  <section className='user-admin-card user-create-card'><div className='user-admin-card-heading'><div><span className='eyebrow'>NEW ACCOUNT</span><h3>Create user access</h3><p>Users create their own password using a one-time setup code.</p></div></div>
-   <form className='user-create-form' onSubmit={createRoleUser}>
-    <label>Company email<input type='email' value={newUserEmail} onChange={e=>setNewUserEmail(e.target.value)} placeholder='employee@gsons.co.in' required /></label>
-    <label>Role<select value={newUserRole} onChange={e=>setNewUserRole(e.target.value)}><option value='planner'>Planner — production management and all reports</option><option value='operator'>Operator — operator scanner only</option><option value='super_admin'>Super Admin — full access and role configuration</option></select></label>
-    <button type='submit' className='primary' disabled={usersBusy}>{usersBusy?'Saving…':'＋ Create account'}</button>
-   </form>
-  </section>
-  {setupCredential&&<section className='user-setup-code-card'><div><span className='eyebrow'>ONE-TIME SETUP CODE</span><h3>{setupCredential.email}</h3><p>Send this code to the user privately. It can be used once to create a password.</p></div><div className='user-setup-code-row'><code>{setupCredential.code}</code><button className='user-admin-secondary' onClick={async()=>{try{await navigator.clipboard.writeText(setupCredential.code);setUsersNotice('Setup code copied. Share it privately.');}catch{setUsersError('Could not copy automatically. Select and copy the code.');}}}>Copy code</button></div></section>}
-  <section className='user-admin-card user-directory-card'><div className='user-admin-card-heading'><div><span className='eyebrow'>ACCOUNT DIRECTORY</span><h3>Company users</h3><p>Role changes take effect the next time an account is checked. Deactivation revokes active sessions.</p></div><span className='user-count'>{roleUsers.length} account{roleUsers.length===1?'':'s'}</span></div>
-   {usersLoading?<div className='empty'>Loading user accounts…</div>:roleUsers.length?<div className='user-admin-table-wrap'><table className='user-admin-table'><thead><tr><th>Account</th><th>Role</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead><tbody>{roleUsers.map(account=>{const isSelf=String(account.email||'').toLowerCase()===String(user?.email||'').toLowerCase();return <tr key={account.id}><td><strong>{account.email}</strong>{isSelf&&<span className='user-self-tag'>You</span>}</td><td><select value={account.role} disabled={usersBusy||isSelf} onChange={e=>void changeRoleUser(account.id,e.target.value)} aria-label={'Role for '+account.email}><option value='super_admin'>Super Admin</option><option value='planner'>Planner</option><option value='operator'>Operator</option></select></td><td><span className={account.password_configured?'user-password-set':'user-password-pending'}>{account.password_configured?'Password set':'Setup pending'}</span></td><td><span className={account.is_active?'user-state-active':'user-state-inactive'}>{account.is_active?'Active':'Inactive'}</span></td><td><div className='user-admin-row-actions'><button disabled={usersBusy||isSelf} onClick={()=>void resetRoleUserPassword(account)}>Reset password</button><button className={account.is_active?'user-deactivate':''} disabled={usersBusy||isSelf} onClick={()=>void toggleRoleUserActive(account)}>{account.is_active?'Deactivate':'Activate'}</button></div></td></tr>;})}</tbody></table></div>:<div className='empty'>No user accounts found.</div>}
+  <section className='user-admin-card user-registration-note'><div className='user-admin-card-heading'><div><span className='eyebrow'>NEW USERS</span><h3>Self-registration is enabled</h3><p>New employees can register from the sign-in screen with an email and password. Their role starts as <strong>Pending assignment</strong>, with no access to production tabs until you assign Super Admin, Planner or Operator.</p></div></div></section>
+  <section className='user-admin-card user-directory-card'><div className='user-admin-card-heading'><div><span className='eyebrow'>ACCOUNT DIRECTORY</span><h3>Company users</h3><p>New registrations remain pending until you assign a role. Password resets take effect immediately; resetting another user's password signs out their existing sessions.</p></div><span className='user-count'>{roleUsers.length} account{roleUsers.length===1?'':'s'}</span></div>
+   {usersLoading?<div className='empty'>Loading user accounts…</div>:roleUsers.length?<div className='user-admin-table-wrap'><table className='user-admin-table'><thead><tr><th>Account</th><th>Role</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead><tbody>{roleUsers.map(account=>{const isSelf=String(account.email||'').toLowerCase()===String(user?.email||'').toLowerCase();return <tr key={account.id}><td><strong>{account.email}</strong>{isSelf&&<span className='user-self-tag'>You</span>}</td><td><select value={account.role} disabled={usersBusy||isSelf} onChange={e=>void changeRoleUser(account.id,e.target.value)} aria-label={'Role for '+account.email}><option value='pending'>Pending assignment</option><option value='super_admin'>Super Admin</option><option value='planner'>Planner</option><option value='operator'>Operator</option></select></td><td><span className={account.password_configured?'user-password-set':'user-password-pending'}>{account.password_configured?'Password set':'Password required'}</span></td><td><span className={account.is_active?'user-state-active':'user-state-inactive'}>{account.is_active?'Active':'Inactive'}</span></td><td><div className='user-admin-row-actions'><button disabled={usersBusy} onClick={()=>void resetRoleUserPassword(account)}>Set / reset password</button><button className={account.is_active?'user-deactivate':''} disabled={usersBusy||isSelf} onClick={()=>void toggleRoleUserActive(account)}>{account.is_active?'Deactivate':'Activate'}</button></div></td></tr>;})}</tbody></table></div>:<div className='empty'>No user accounts found.</div>}
   </section>
  </main>}
+ {passwordResetTarget&&isSuperAdmin&&<div className='operator-detail-backdrop user-password-reset-backdrop' role='presentation' onMouseDown={event=>{if(event.target===event.currentTarget&&!usersBusy){setPasswordResetTarget(null);setPasswordResetValue('');setPasswordResetConfirm('');}}}><section className='operator-detail-dialog user-password-reset-dialog' role='dialog' aria-modal='true' aria-labelledby='user-password-reset-title'>
+  <header className='operator-detail-header'><div><span className='eyebrow'>SUPER ADMIN ACTION</span><h2 id='user-password-reset-title'>Set a new password</h2><p>{passwordResetTarget.email}</p></div><button type='button' className='operator-detail-close' disabled={usersBusy} aria-label='Close password reset' onClick={()=>{setPasswordResetTarget(null);setPasswordResetValue('');setPasswordResetConfirm('');}}>×</button></header>
+  <form className='user-password-reset-form' onSubmit={submitRoleUserPasswordReset}><p>Choose a new password of at least 10 characters. The password is hashed on the server; it is not displayed after saving.</p>
+   <label>New password<input type='password' autoComplete='new-password' value={passwordResetValue} onChange={e=>setPasswordResetValue(e.target.value)} minLength={10} maxLength={200} required/></label>
+   <label>Confirm new password<input type='password' autoComplete='new-password' value={passwordResetConfirm} onChange={e=>setPasswordResetConfirm(e.target.value)} minLength={10} maxLength={200} required/></label>
+   {usersError&&<div className='auth-error' role='alert'>{usersError}</div>}
+   <div className='user-password-reset-actions'><button type='button' className='user-admin-secondary' disabled={usersBusy} onClick={()=>{setPasswordResetTarget(null);setPasswordResetValue('');setPasswordResetConfirm('');}}>Cancel</button><button type='submit' className='primary' disabled={usersBusy}>{usersBusy?'Saving password…':'Save new password'}</button></div>
+  </form>
+ </section></div>}
  {view==='operator'&&<main className='operator-workstation'>
  <section className='operator-workstation-top'>
   <div className={'operator-assignment-card '+(selectedPlan&&!showPlanSetup?'has-plan':'')}>
