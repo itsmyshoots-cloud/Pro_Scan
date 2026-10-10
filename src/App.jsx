@@ -577,7 +577,7 @@ export default function App({user}){
    let data=planSerials.find(row=>row.plan_id===selectedPlan.id&&(String(row.serial_number||'').toUpperCase()===clean||String(row.label_number||'').toUpperCase()===clean))||null;
    if(!data){
     const lookup=supabase.from('plan_serials').select('*').eq('plan_id',selectedPlan.id);
-    const lookupQuery=/^(P-\\d+|GM\\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
+    const lookupQuery=/^(P-\d+|GM\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
     const result=await lookupQuery.maybeSingle();
     if(result.error){setMessage('Could not check serial '+clean+': '+result.error.message);return;}
     data=result.data;
