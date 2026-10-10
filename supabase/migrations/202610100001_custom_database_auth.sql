@@ -118,59 +118,59 @@ drop policy if exists "management insert serial numbers" on public.serial_number
 drop policy if exists "management update serial numbers" on public.serial_numbers;
 
 drop policy if exists "custom role read production plans" on public.production_plans;
-create policy "custom role read production plans" on public.production_plans
+drop policy if exists "custom role read production plans" on  on public.production_plans
 for select to anon, authenticated
 using (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom management insert production plans" on public.production_plans;
-create policy "custom management insert production plans" on public.production_plans
+drop policy if exists "custom management insert production plans" on  on public.production_plans
 for insert to anon, authenticated
 with check (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom management update production plans" on public.production_plans;
-create policy "custom management update production plans" on public.production_plans
+drop policy if exists "custom management update production plans" on  on public.production_plans
 for update to anon, authenticated
 using (private.custom_app_role() in ('operator','planner','super_admin'))
 with check (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom role read plan serials" on public.plan_serials;
-create policy "custom role read plan serials" on public.plan_serials
+drop policy if exists "custom role read plan serials" on  on public.plan_serials
 for select to anon, authenticated
 using (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom management insert plan serials" on public.plan_serials;
-create policy "custom management insert plan serials" on public.plan_serials
+drop policy if exists "custom management insert plan serials" on  on public.plan_serials
 for insert to anon, authenticated
 with check (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom operator update plan serials" on public.plan_serials;
-create policy "custom operator update plan serials" on public.plan_serials
+drop policy if exists "custom operator update plan serials" on  on public.plan_serials
 for update to anon, authenticated
 using (private.custom_app_role() in ('operator','planner','super_admin'))
 with check (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom role read scan events" on public.scan_events;
-create policy "custom role read scan events" on public.scan_events
+drop policy if exists "custom role read scan events" on  on public.scan_events
 for select to anon, authenticated
 using (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom role insert scan events" on public.scan_events;
-create policy "custom role insert scan events" on public.scan_events
+drop policy if exists "custom role insert scan events" on  on public.scan_events
 for insert to anon, authenticated
 with check (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom management read serial numbers" on public.serial_numbers;
-create policy "custom management read serial numbers" on public.serial_numbers
+drop policy if exists "custom management read serial numbers" on  on public.serial_numbers
 for select to anon, authenticated
 using (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom management insert serial numbers" on public.serial_numbers;
-create policy "custom management insert serial numbers" on public.serial_numbers
+drop policy if exists "custom management insert serial numbers" on  on public.serial_numbers
 for insert to anon, authenticated
 with check (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom management update serial numbers" on public.serial_numbers;
-create policy "custom management update serial numbers" on public.serial_numbers
+drop policy if exists "custom management update serial numbers" on  on public.serial_numbers
 for update to anon, authenticated
 using (private.custom_app_role() in ('planner','super_admin'))
 with check (private.custom_app_role() in ('planner','super_admin'));
