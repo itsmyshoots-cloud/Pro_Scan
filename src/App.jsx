@@ -57,6 +57,29 @@ function rebalanceHourlyTargets(targets,total){
  return source.map((row,index)=>({...row,planned_qty:allocated[index]}));
 }
 function getLocalMinutes(date){return date.getHours()*60+date.getMinutes();}
+function buildPlanHourlyRows(plan,serialRows){
+ if(!plan)return [];
+ const buckets=new Map();
+ for(const target of Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]){
+  const hour=String(target.hour||target.start_time||'').slice(0,5);
+  if(/^\d{2}:\d{2}$/.test(hour))buckets.set(hour,{hour,planned_qty:Number(target.planned_qty||0),actual_qty:0});
+ }
+ const shift=getPlanShiftWindow(plan);
+ if(shift){
+  for(const serial of serialRows||[]){
+   if(serial.plan_id!==plan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
+   const scannedAt=new Date(serial.scanned_at);
+   if(localDateKey(scannedAt)!==plan.production_date)continue;
+   const minutes=getLocalMinutes(scannedAt);
+   if(minutes<shift.start||minutes>=shift.end)continue;
+   const slot=shift.start+Math.floor((minutes-shift.start)/60)*60;
+   const hour=String(Math.floor(slot/60)).padStart(2,'0')+':'+String(slot%60).padStart(2,'0');
+   const row=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
+   row.actual_qty+=1;buckets.set(hour,row);
+  }
+ }
+ return [...buckets.values()].sort((a,b)=>a.hour.localeCompare(b.hour)).map(row=>({...row,variance:row.actual_qty-row.planned_qty}));
+}
 function csvCell(value){return '"'+String(value??'').replace(/"/g,'""')+'"';}
 function downloadCsv(filename,headers,rows){
  const csv='\uFEFF'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n');
@@ -261,7 +284,7 @@ export default function App({user}){
  const activePlans=useMemo(()=>plans.filter(p=>p.status==='active'),[plans]);
  const todayKey=localDateKey(now);
  const dashboardPlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&(p.status==='active'||p.production_date>=todayKey)).sort((a,b)=>(b.production_date||'').localeCompare(a.production_date||'')||(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)),[plans,todayKey]);
- const operatorEligiblePlans=useMemo(()=>plans.filter(p=>p.status==='active'||p.status==='draft').sort((a,b)=>(b.production_date||'').localeCompare(a.production_date||'')||(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)),[plans]);
+ const operatorEligiblePlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&p.production_date===todayKey).sort((a,b)=>(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)||(a.created_at||'').localeCompare(b.created_at||'')),[plans,todayKey]);
  const pendingSerials=useMemo(()=>planSerials.filter(s=>s.status!=='scanned'),[planSerials]);
  const scannedSerials=useMemo(()=>planSerials.filter(s=>s.status==='scanned'),[planSerials]);
  const uniqueDuplicateSerials=useMemo(()=>[...new Map(duplicateScans.map(e=>[e.serial_number,e])).values()],[duplicateScans]);
@@ -409,44 +432,6 @@ export default function App({user}){
   }
  };
  const hourlyTargetTotal=useMemo(()=>hourlyTargets.reduce((sum,row)=>sum+Math.max(0,Number(row.planned_qty||0)),0),[hourlyTargets]);
- const selectedLinePlans=useMemo(()=>activePlans.filter(plan=>plan.production_line===selectedMonitoringLine),[activePlans,selectedMonitoringLine]);
- const selectedHourlyPlan=useMemo(()=>selectedLinePlans.find(plan=>plan.id===selectedMonitoringPlanId)||selectedLinePlans[0]||null,[selectedLinePlans,selectedMonitoringPlanId]);
- const hourlyReportRows=useMemo(()=>{
-  if(!selectedHourlyPlan)return [];
-  const buckets=new Map();
-  const targets=Array.isArray(selectedHourlyPlan.hourly_targets)?selectedHourlyPlan.hourly_targets:[];
-  for(const item of targets){
-   const hour=String(item.hour||item.start_time||'').slice(0,5);
-   if(!/^\d{2}:\d{2}$/.test(hour))continue;
-   buckets.set(hour,{hour,planned_qty:Number(item.planned_qty||0),actual_qty:0});
-  }
-  for(const serial of monitoringSerials){
-   if(serial.plan_id!==selectedHourlyPlan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
-   const scannedAt=new Date(serial.scanned_at);
-   if(localDateKey(scannedAt)!==selectedHourlyPlan.production_date)continue;
-   const shift=getPlanShiftWindow(selectedHourlyPlan);
-   if(!shift)continue;
-   const scannedMinutes=getLocalMinutes(scannedAt);
-   if(scannedMinutes<shift.start||scannedMinutes>=shift.end)continue;
-   const slotMinutes=shift.start+Math.floor((scannedMinutes-shift.start)/60)*60;
-   const hour=String(Math.floor(slotMinutes/60)).padStart(2,'0')+':'+String(slotMinutes%60).padStart(2,'0');
-   const bucket=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
-   bucket.actual_qty+=1;buckets.set(hour,bucket);
-  }
-  return [...buckets.values()].sort((a,b)=>a.hour.localeCompare(b.hour)).map(row=>({...row,variance:row.actual_qty-row.planned_qty}));
- },[selectedHourlyPlan,monitoringSerials]);
- const hourlyChartMax=useMemo(()=>Math.max(1,...hourlyReportRows.flatMap(row=>[row.planned_qty,row.actual_qty])),[hourlyReportRows]);
- const downloadHourlyReport=()=>{
-  if(!selectedHourlyPlan||!hourlyReportRows.length)return;
-  const headers=['Product','Brand','Model','Production Date','Production Line','Plan Status','Hourly Slot','Planned Quantity','Actual Scanned','Variance (Actual - Planned)'];
-  const data=hourlyReportRows.map(row=>[selectedHourlyPlan.product_name,selectedHourlyPlan.brand||'',selectedHourlyPlan.model,selectedHourlyPlan.production_date,selectedHourlyPlan.production_line,selectedHourlyPlan.status,getHourlySlotLabel(row.hour), row.planned_qty,row.actual_qty,row.variance]);
-  const slug=String(selectedHourlyPlan.product_name||'production').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  downloadCsv('hourly-production-'+slug+'-'+selectedHourlyPlan.production_date+'.csv',headers,data);
- };
- const openLineHourly=line=>{const linePlans=activePlans.filter(plan=>(plan.production_line||'Unassigned')===line);setSelectedMonitoringLine(line);setSelectedMonitoringPlanId(linePlans[0]?.id||'');};
-
-
-
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
  const importFile=async e=>{
   const input=e.currentTarget,f=input.files?.[0];if(!f)return;
@@ -696,7 +681,7 @@ export default function App({user}){
  <div className='dashboard-footer'><span><i className='live-dot'/> Monitoring refreshes automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Loading…'}</span><button onClick={()=>setView('operator')}>Open Operator Scanner →</button></div>
 </main>}
 {view==='live-monitoring'&&<main className='live-monitoring-page'>
- <section className='monitoring-hero'><div><span className='eyebrow'>SHOP FLOOR / LIVE VIEW</span><h2>Live production monitoring</h2><p>Current output and line-wise progress for active production plans.</p></div><div className='monitoring-live-status'><i className='live-dot'/> LIVE <span>{monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Connecting…'}</span><button onClick={()=>{void refreshMonitoring();void load()}}>↻ Refresh</button></div></section>
+ <section className='monitoring-hero'><div><span className='eyebrow'>SHOP FLOOR / LIVE VIEW</span><h2>Live production monitoring</h2><p>Line-wise progress with a separate hourly planned-vs-actual graph for every active production plan.</p></div><div className='monitoring-live-status'><i className='live-dot'/> LIVE <span>{monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Connecting…'}</span><button onClick={()=>{void refreshMonitoring();void load()}}>↻ Refresh</button></div></section>
  {monitoringError&&<div className='notice dashboard-error'>{monitoringError}</div>}
  <div className='dashboard-kpis monitoring-kpis'>
   <div className='dashboard-kpi'><span className='kpi-label'>Active plans</span><div className='kpi-value'>{activePlans.length.toLocaleString()}<span className='kpi-icon kpi-blue'>▦</span></div><small>Currently running plans</small></div>
@@ -704,28 +689,34 @@ export default function App({user}){
   <div className='dashboard-kpi'><span className='kpi-label'>Scanned units</span><div className='kpi-value'>{activeScannedQty.toLocaleString()}<span className='kpi-icon kpi-green'>✓</span></div><small>{activePlannedQty?Math.round(activeScannedQty/activePlannedQty*100):0}% completion</small></div>
   <div className='dashboard-kpi'><span className='kpi-label'>Remaining units</span><div className='kpi-value'>{activePendingQty.toLocaleString()}<span className='kpi-icon kpi-amber'>◷</span></div><small>{duplicateEventCount.toLocaleString()} duplicate scan events on active plans</small></div>
  </div>
- <section className='panel live-line-panel'><div className='panel-head'><div><span className='eyebrow'>ACTIVE PRODUCTION LINES</span><h3>Line-wise production</h3></div><span className='refresh-caption'>Auto-refresh every 8 seconds</span></div>
-  {productionLineStats.length?<div className='line-monitor-grid'>{productionLineStats.map(stat=><article className={'line-monitor-card '+(selectedMonitoringLine===stat.line?'is-selected':'')} role='button' tabIndex={0} onClick={()=>openLineHourly(stat.line)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openLineHourly(stat.line);}}} key={stat.line}><div className='line-monitor-head'><span className='line-indicator'/><strong>{stat.line}</strong><span className='badge'>{stat.plans} {stat.plans===1?'PLAN':'PLANS'}</span></div><div className='line-monitor-percent'>{stat.percent}<small>%</small></div><div className='progress-track'><div className='progress-fill' style={{width:stat.percent+'%'}}/></div><div className='line-monitor-counts'><div><span>Scanned</span><b>{stat.scanned.toLocaleString()}</b></div><div><span>Remaining</span><b>{stat.pending.toLocaleString()}</b></div><div><span>Target</span><b>{stat.target.toLocaleString()}</b></div></div>{activePlans.filter(p=>(p.production_line||'Unassigned')===stat.line).map(plan=><div className='monitor-plan-link' key={plan.id}><span>{plan.brand||'—'} · {plan.product_name} · {plan.model}</span><button onClick={event=>{event.stopPropagation();setSelectedPlan(plan);setOperatorFilters({production_line:plan.production_line||'',brand:plan.brand||'',product_name:plan.product_name||''});setView('operator')}}>Open scanner →</button></div>)}</article>)}</div>:<div className='empty'>No active production plans to monitor.</div>}
+ <section className='panel live-line-panel'><div className='panel-head'><div><span className='eyebrow'>ACTIVE PRODUCTION LINES</span><h3>Line-wise production & hourly output</h3></div><span className='refresh-caption'>Auto-refresh every 8 seconds</span></div>
+  {productionLineStats.length?<div className='line-monitor-grid'>{productionLineStats.map(stat=>{
+   const linePlans=activePlans.filter(plan=>(plan.production_line||'Unassigned')===stat.line).sort((a,b)=>(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0));
+   return <article className='line-monitor-card' key={stat.line}>
+    <div className='line-monitor-head'><span className='line-indicator'/><strong>{stat.line}</strong><span className='badge'>{stat.plans} {stat.plans===1?'PLAN':'PLANS'}</span></div>
+    <div className='line-monitor-percent'>{stat.percent}<small>%</small></div>
+    <div className='progress-track'><div className='progress-fill' style={{width:stat.percent+'%'}}/></div>
+    <div className='line-monitor-counts'><div><span>Scanned</span><b>{stat.scanned.toLocaleString()}</b></div><div><span>Remaining</span><b>{stat.pending.toLocaleString()}</b></div><div><span>Target</span><b>{stat.target.toLocaleString()}</b></div></div>
+    {linePlans.map(plan=>{
+     const hourlyRows=buildPlanHourlyRows(plan,monitoringSerials),chartMax=Math.max(1,...hourlyRows.flatMap(row=>[row.planned_qty,row.actual_qty]));
+     return <section className='line-plan-hourly' key={plan.id}>
+      <div className='line-plan-hourly-heading'><div><strong>{plan.product_name}</strong><span>{plan.brand||'—'} · {plan.model} · {planShiftLabel(plan)}</span></div><small>{Number(plan.planned_qty||0).toLocaleString()} units</small></div>
+      <div className='line-plan-chart-legend'><span><i className='line-plan-legend-planned'/> Planned</span><span><i className='line-plan-legend-actual'/> Actual</span><small>{plan.id.slice(0,8)}</small></div>
+      {hourlyRows.length?<div className='line-plan-chart-scroll'><div className='line-plan-hourly-chart' style={{minWidth:Math.max(245,hourlyRows.length*30)+'px'}}>
+       {hourlyRows.map(row=><div className='line-plan-hourly-column' key={row.hour} title={getHourlySlotLabel(row.hour)+' — planned '+row.planned_qty+', actual '+row.actual_qty}>
+        <div className='line-plan-hourly-values'><span>{row.planned_qty||'·'}</span><span>{row.actual_qty||'·'}</span></div>
+        <div className='line-plan-hourly-bars'><i className='line-plan-planned-bar' style={{height:(row.planned_qty?Math.max(3,row.planned_qty/chartMax*100):0)+'%'}}/><i className='line-plan-actual-bar' style={{height:(row.actual_qty?Math.max(3,row.actual_qty/chartMax*100):0)+'%'}}/></div>
+        <small>{formatClock12(row.hour).replace(' AM','a').replace(' PM','p')}</small>
+       </div>)}
+      </div></div>:<div className='line-plan-no-targets'>No hourly targets are saved for this plan.</div>}
+     </section>;
+    })}
+   </article>;
+  })}</div>:<div className='empty'>No active production plans to monitor.</div>}
  </section>
- {selectedMonitoringLine&&<div className='hourly-modal-backdrop' role='presentation' onClick={()=>{setSelectedMonitoringLine('');setSelectedMonitoringPlanId('')}}><section className='panel hourly-detail-panel' id='hourly-production-detail' role='dialog' aria-modal='true' aria-label='Hourly production detail' onClick={e=>e.stopPropagation()}>
-  <div className='panel-head'><div><span className='eyebrow'>HOURLY OUTPUT ANALYSIS</span><h3>{selectedMonitoringLine} · Planned vs actual production</h3><p className='hourly-panel-subtitle'>Select a plan to compare its hourly target with serials successfully scanned on the plan date.</p></div><button onClick={()=>{setSelectedMonitoringLine('');setSelectedMonitoringPlanId('')}}>Close chart</button></div>
-  {selectedLinePlans.length?<><div className='hourly-report-controls'>
-   <label>Production plan<select value={selectedHourlyPlan?.id||''} onChange={e=>setSelectedMonitoringPlanId(e.target.value)}>{selectedLinePlans.map(plan=><option value={plan.id} key={plan.id}>{plan.production_date} · {plan.brand||'—'} · {plan.product_name} · {plan.model}</option>)}</select></label>
-   {selectedHourlyPlan&&<div className='hourly-plan-summary'><strong>{selectedHourlyPlan.product_name}</strong><span>{selectedHourlyPlan.brand||'—'} · {selectedHourlyPlan.model} · {selectedHourlyPlan.production_date}</span><small>{Number(selectedHourlyPlan.planned_qty||0).toLocaleString()} planned units · {selectedHourlyPlan.status}</small></div>}
-  </div>
-  {selectedHourlyPlan&&(!Array.isArray(selectedHourlyPlan.hourly_targets)||selectedHourlyPlan.hourly_targets.length===0)&&<div className='notice hourly-target-warning'>This plan was created before hourly targets were enabled, so its planned hourly values are not available. New plans will store the targets entered in Production Planning. Actual scans, if any, are still shown below.</div>}
-  <div className='hourly-chart-legend'><span><i className='legend-planned'/> Planned per hour</span><span><i className='legend-actual'/> Actual scanned</span><span className='hourly-date-note'>Production date: {selectedHourlyPlan?.production_date||'—'}</span></div>
-  {hourlyReportRows.length?<div className='hourly-chart-scroll'><div className='hourly-chart' style={{minWidth:Math.max(520,hourlyReportRows.length*66)+'px'}}>{hourlyReportRows.map(row=><div className='hourly-chart-column' key={row.hour} title={row.hour+' — planned '+row.planned_qty+', actual '+row.actual_qty}>
-   <div className='hourly-bar-values'><span>{row.planned_qty?row.planned_qty.toLocaleString():'·'}</span><span>{row.actual_qty?row.actual_qty.toLocaleString():'·'}</span></div>
-   <div className='hourly-bars'><div className='hourly-bar planned-hour-bar' style={{height:(row.planned_qty?Math.max(3,row.planned_qty/hourlyChartMax*100):0)+'%'}}/><div className='hourly-bar actual-hour-bar' style={{height:(row.actual_qty?Math.max(3,row.actual_qty/hourlyChartMax*100):0)+'%'}}/></div>
-   <b className='hourly-hour-label'>{formatClock12(row.hour)}</b><small className={row.variance<0?'variance-negative':row.variance>0?'variance-positive':''}>{row.variance>0?'+':''}{row.variance.toLocaleString()}</small>
-  </div>)}</div></div>:<div className='empty'>No hourly target or scanned-serial data exists for this plan date yet.</div>}
-  {hourlyReportRows.length>0&&<div className='hourly-table-wrap'><table className='hourly-report-table'><thead><tr><th>Hour</th><th>Planned quantity</th><th>Actual scanned</th><th>Variance</th></tr></thead><tbody>{hourlyReportRows.map(row=><tr key={row.hour}><td>{getHourlySlotLabel(row.hour)}</td><td>{row.planned_qty.toLocaleString()}</td><td>{row.actual_qty.toLocaleString()}</td><td className={row.variance<0?'variance-negative':row.variance>0?'variance-positive':''}>{row.variance>0?'+':''}{row.variance.toLocaleString()}</td></tr>)}</tbody></table></div>}
-  </>:<div className='empty'>No active plans are available on this line.</div>}
- </section></div>}
  <div className='dashboard-footer'><span><i className='live-dot'/> Live values refresh automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleString('en-IN'):'Loading…'}</span><button onClick={()=>setView('manage')}>Manage production plans →</button></div>
 </main>}
- {view==='planner'&&<main><section className='panel planner-panel'>
+{view==='planner'&&<main><section className='panel planner-panel'>
  <div className='panel-head'><div><span className='eyebrow'>{editingPlanId?'EDIT DRAFT PLAN':'PRODUCTION PLANNING'}</span><h2>{editingPlanId?'Edit draft production plan':'Create daily production plan'}</h2><p className='planner-subtitle'>Set the production shift and hourly targets, then allocate a matching supplier serial batch. Only Draft plans can be edited.</p></div><button onClick={()=>{setEditingPlanId('');setView(editingPlanId?'manage':'dashboard');setMessage('');}}>Back</button></div>
  <div className='grid'>
   <label>Production date<input type='date' value={form.production_date} onChange={e=>setForm({...form,production_date:e.target.value})}/></label>
@@ -753,7 +744,7 @@ export default function App({user}){
  <section className='management-title-bar'><div><span className='eyebrow'>PRODUCTION PLANS</span><h2>Manage production</h2><p>Review progress and plan status. Completed quantity updates status automatically.</p></div><button className='primary' onClick={startNewPlan}>＋ New production plan</button></section>
  {message&&<div className='notice management-message'>{message}</div>}
  <div className='management-filter-bar'><div><b>{filteredPlans.length}</b><span>plan(s) shown</span></div><label>Filter by status<select value={planStatusFilter} onChange={e=>setPlanStatusFilter(e.target.value)}><option value='all'>All statuses</option><option value='active'>Active</option><option value='draft'>Draft</option><option value='completed'>Completed</option><option value='cancelled'>Cancelled</option></select></label><button onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button></div>
- <section className='panel management-table-panel'>{filteredPlans.length?<div className='management-table-wrap'><table className='management-table'><thead><tr><th>Date</th><th>Product / Model</th><th>Line</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredPlans.map(plan=>{const serials=monitoringSerials.filter(row=>row.plan_id===plan.id);const scanned=serials.filter(row=>row.status==='scanned').length;const target=Number(plan.planned_qty||0);const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}><td>{plan.production_date}</td><td><div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · {target.toLocaleString()} units</small></td><td>{plan.production_line}</td><td><div className='manage-progress'><div className='progress-track'><div className='progress-fill' style={{width:Math.min(100,pct)+'%'}}/></div><span>{scanned.toLocaleString()} / {target.toLocaleString()} ({pct}%)</span></div></td><td><span className={'plan-status-badge status-'+plan.status}>{plan.status}</span></td><td><div className='table-actions'><button onClick={()=>setView('live-monitoring')}>Monitor</button>{plan.status==='draft'&&<button disabled={busy} onClick={()=>void startEditPlan(plan)}>Edit draft</button>}{plan.status==='draft'&&<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>}{plan.status==='active'&&<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>}{(plan.status==='draft'||plan.status==='active')&&<button disabled={statusUpdatingId===plan.id} onClick={()=>void updatePlanStatus(plan.id,'cancelled')}>Cancel</button>}</div></td></tr>})}</tbody></table></div>:<div className='empty'>No production plans match this filter.</div>}</section>
+ <section className='panel management-table-panel'>{filteredPlans.length?<div className='management-table-wrap'><table className='management-table'><thead><tr><th>Date</th><th>Product / Model</th><th>Line</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredPlans.map(plan=>{const serials=monitoringSerials.filter(row=>row.plan_id===plan.id);const scanned=serials.filter(row=>row.status==='scanned').length;const target=Number(plan.planned_qty||0);const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}><td>{plan.production_date}</td><td><div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · {target.toLocaleString()} units</small></td><td>{plan.production_line}</td><td><div className='manage-progress'><div className='progress-track'><div className='progress-fill' style={{width:Math.min(100,pct)+'%'}}/></div><span>{scanned.toLocaleString()} / {target.toLocaleString()} ({pct}%)</span></div></td><td><span className={'plan-status-badge status-'+plan.status}>{plan.status}</span></td><td><div className='table-actions'>{plan.status==='draft'&&<button disabled={busy} onClick={()=>void startEditPlan(plan)}>Edit draft</button>}{plan.status==='draft'&&<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>}{plan.status==='active'&&<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>}{(plan.status==='draft'||plan.status==='active')&&<button disabled={statusUpdatingId===plan.id} onClick={()=>void updatePlanStatus(plan.id,'cancelled')}>Cancel</button>}</div></td></tr>})}</tbody></table></div>:<div className='empty'>No production plans match this filter.</div>}</section>
  <div className='management-footnote'><span>Plan status changes apply to operator selection and live monitoring.</span><span>Last refreshed: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN'):'Loading…'}</span></div>
 </main>}
  {view==='reports'&&<main className='reports-page'>
@@ -817,7 +808,6 @@ export default function App({user}){
    <option value=''>Choose a specific production plan</option>
    {operatorEligiblePlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_date} · {plan.production_line} · {planShiftLabel(plan)} · {plan.brand||'—'} · {plan.product_name} · {plan.model} · {Number(plan.planned_qty||0).toLocaleString()} units · #{plan.id.slice(0,8)} · {plan.status.toUpperCase()}</option>)}
   </select><small>Plans on the same line or product remain separate. Choose the exact shift, target quantity and plan ID.</small></label>
-  <div className='operator-plan-availability'><strong>{operatorEligiblePlans.length.toLocaleString()}</strong><span>available Draft / Active plans</span><small>Completed and cancelled plans are not selectable.</small></div>
  </div>
  {selectedPlan&&<><div className='operator-plan-strip'><div><span className='eyebrow'>SELECTED PLAN</span><strong>{selectedPlan.brand||'—'} · {selectedPlan.product_name} · {selectedPlan.model}</strong><span>{selectedPlan.production_line} · Production date: {selectedPlan.production_date}</span></div><div className='plan-stamp'><span>Plan status</span><b>{selectedPlan.status}</b></div></div>
   <div className='operator-active-progress'><div className='operator-active-progress-head'><span>ACTIVE PRODUCTION PROGRESS</span><strong>{selectedPlan.planned_qty?Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100):0}% complete</strong></div><div className='progress-track'><div className='progress-fill' style={{width:(selectedPlan.planned_qty?Math.min(100,scannedSerials.length/Number(selectedPlan.planned_qty)*100):0)+'%'}}/></div><div className='operator-active-progress-foot'><span>{scannedSerials.length.toLocaleString()} units scanned</span><span>{pendingSerials.length.toLocaleString()} remaining of {Number(selectedPlan.planned_qty||0).toLocaleString()}</span></div></div>
