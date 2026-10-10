@@ -80,8 +80,18 @@ function validatePairs(parsed){
  for(const row of parsed){if(labels.has(row.label_number))throw new Error('Duplicate label found: '+row.label_number+'.');if(serials.has(row.serial_number))throw new Error('Duplicate serial found: '+row.serial_number+'.');labels.add(row.label_number);serials.add(row.serial_number);}
  return parsed;
 }
-export default function App(){
- const [view,setView]=useState('dashboard'); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
+export default function App({user}){
+ const isOperatorUser = user?.role === 'operator';
+ const isSuperAdmin = user?.role === 'super_admin';
+ const [view,setView]=useState(user?.role==='operator'?'operator':'dashboard');
+ const [roleUsers,setRoleUsers]=useState([]);
+ const [usersLoading,setUsersLoading]=useState(false);
+ const [usersBusy,setUsersBusy]=useState(false);
+ const [usersError,setUsersError]=useState('');
+ const [usersNotice,setUsersNotice]=useState('');
+ const [newUserEmail,setNewUserEmail]=useState('');
+ const [newUserRole,setNewUserRole]=useState('operator');
+ const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
  const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',date_from:'',date_to:'',month:'all'}); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>createHourlyTargets()); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
@@ -502,7 +512,68 @@ export default function App(){
   setMessage('Starting camera…');setCamera(true);
  };
  const stopCamera=()=>{try{readerRef.current?.reset()}catch{}setCamera(false)};
- return <div className={'app '+(view==='operator'?'app-operator':'')}><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span><button className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='manage'?'nav-button is-active':'nav-button'} onClick={()=>setView('manage')}>Manage Production</button><button className={view==='reports'?'nav-button is-active':'nav-button'} onClick={()=>setView('reports')}>Reports</button><button className={view==='operator'?'nav-button is-active':'nav-button'} onClick={()=>setView('operator')}>Operator</button></div></header>
+
+ const callAppAuth = async payload => {
+  const {data,error}=await supabase.functions.invoke('app-auth',{body:payload});
+  if(error)throw new Error(error.message||'Could not contact the authentication service.');
+  if(data?.error)throw new Error(data.error);
+  return data;
+ };
+ const loadRoleUsers = async () => {
+  if(!isSuperAdmin)return;
+  setUsersLoading(true);setUsersError('');
+  try {
+   const result=await callAppAuth({action:'list-users'});
+   setRoleUsers(Array.isArray(result.users)?result.users:[]);
+  } catch(error) {setUsersError(error?.message||'Could not load user accounts.');}
+  finally {setUsersLoading(false);}
+ };
+ useEffect(()=>{if(view==='users'&&isSuperAdmin)void loadRoleUsers();},[view,isSuperAdmin]);
+ const createRoleUser = async event => {
+  event.preventDefault();setUsersBusy(true);setUsersError('');setUsersNotice('');setSetupCredential(null);
+  try {
+   const result=await callAppAuth({action:'create-user',email:newUserEmail.trim().toLowerCase(),role:newUserRole});
+   setSetupCredential({email:result.user.email,code:result.setupCode});
+   setUsersNotice('Account created. Share this one-time setup code with the user through a separate secure channel.');
+   setNewUserEmail('');setNewUserRole('operator');
+   await loadRoleUsers();
+  } catch(error) {setUsersError(error?.message||'Could not create the account.');}
+  finally {setUsersBusy(false);}
+ };
+ const changeRoleUser = async (id,role) => {
+  setUsersBusy(true);setUsersError('');setUsersNotice('');
+  try {
+   await callAppAuth({action:'update-user-role',userId:id,role});
+   setUsersNotice('User role updated.');
+   await loadRoleUsers();
+  } catch(error) {setUsersError(error?.message||'Could not update the role.');await loadRoleUsers();}
+  finally {setUsersBusy(false);}
+ };
+ const toggleRoleUserActive = async account => {
+  const nextActive=!account.is_active;
+  if(!nextActive&&!window.confirm('Deactivate '+account.email+'? They will be signed out and unable to access Pro Scan.'))return;
+  setUsersBusy(true);setUsersError('');setUsersNotice('');
+  try {
+   await callAppAuth({action:'set-user-active',userId:account.id,isActive:nextActive});
+   setUsersNotice(nextActive?'Account activated.':'Account deactivated and sessions revoked.');
+   await loadRoleUsers();
+  } catch(error) {setUsersError(error?.message||'Could not update account status.');await loadRoleUsers();}
+  finally {setUsersBusy(false);}
+ };
+ const resetRoleUserPassword = async account => {
+  if(!window.confirm('Generate a new one-time password setup code for '+account.email+'? Their existing sessions will be signed out.'))return;
+  setUsersBusy(true);setUsersError('');setUsersNotice('');setSetupCredential(null);
+  try {
+   const result=await callAppAuth({action:'reset-user-password',userId:account.id});
+   setSetupCredential({email:result.user.email,code:result.setupCode});
+   setUsersNotice('A new one-time setup code has been generated. Share it through a separate secure channel.');
+   await loadRoleUsers();
+  } catch(error) {setUsersError(error?.message||'Could not reset the user password.');}
+  finally {setUsersBusy(false);}
+ };
+ const roleLabel = value => ({super_admin:'Super Admin',planner:'Planner',operator:'Operator'}[value]||value);
+
+ return <div className={'app '+(view==='operator'?'app-operator':'')}><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span>{!isOperatorUser&&<><button className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='manage'?'nav-button is-active':'nav-button'} onClick={()=>setView('manage')}>Manage Production</button><button className={view==='reports'?'nav-button is-active':'nav-button'} onClick={()=>setView('reports')}>Reports</button>{isSuperAdmin&&<button className={view==='users'?'nav-button is-active':'nav-button'} onClick={()=>setView('users')}>User Roles</button>}</>}<button className={view==='operator'?'nav-button is-active':'nav-button'} onClick={()=>setView('operator')}>Operator</button></div></header>
  {view==='dashboard'&&<main className='dashboard-page'>
  <section className='dashboard-hero'><div><span className='eyebrow'>PRODUCTION OVERVIEW</span><h2>Production at a glance</h2><p>Track today's production, see progress across active lines, and jump directly into live monitoring or production planning.</p></div><div className='dashboard-hero-actions'><button className='secondary-action' onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button><button className='secondary-action' onClick={()=>setView('planner')}>＋ Production Planning</button><button className='primary' onClick={()=>setView('live-monitoring')}>View Live Monitoring ↗</button></div></section>
  {monitoringError&&<div className='notice dashboard-error'>{monitoringError}</div>}
@@ -604,6 +675,22 @@ export default function App(){
  </section>
 </main>}
  {view==='plans'&&<main><section className='panel'><div className='panel-head'><h2>Plan created</h2><button onClick={()=>setView('dashboard')}>Dashboard</button></div><div className='success'>Production plan is saved as Draft. Open Operator and select this plan during its scheduled shift. It becomes Active only during the shift window.</div></section></main>}
+ {view==='users'&&isSuperAdmin&&<main className='user-admin-page'>
+  <section className='user-admin-heading'><div><span className='eyebrow'>ACCESS CONTROL</span><h2>User role configuration</h2><p>Create company accounts, assign roles, and issue one-time password setup codes.</p></div><button className='user-admin-secondary' onClick={()=>void loadRoleUsers()} disabled={usersLoading||usersBusy}>↻ Refresh users</button></section>
+  {usersError&&<div className='auth-error user-admin-message' role='alert'>{usersError}</div>}
+  {usersNotice&&<div className='auth-notice user-admin-message' role='status'>{usersNotice}</div>}
+  <section className='user-admin-card user-create-card'><div className='user-admin-card-heading'><div><span className='eyebrow'>NEW ACCOUNT</span><h3>Create user access</h3><p>Users create their own password using a one-time setup code.</p></div></div>
+   <form className='user-create-form' onSubmit={createRoleUser}>
+    <label>Company email<input type='email' value={newUserEmail} onChange={e=>setNewUserEmail(e.target.value)} placeholder='employee@gsons.co.in' required /></label>
+    <label>Role<select value={newUserRole} onChange={e=>setNewUserRole(e.target.value)}><option value='planner'>Planner — production management and all reports</option><option value='operator'>Operator — operator scanner only</option><option value='super_admin'>Super Admin — full access and role configuration</option></select></label>
+    <button type='submit' className='primary' disabled={usersBusy}>{usersBusy?'Saving…':'＋ Create account'}</button>
+   </form>
+  </section>
+  {setupCredential&&<section className='user-setup-code-card'><div><span className='eyebrow'>ONE-TIME SETUP CODE</span><h3>{setupCredential.email}</h3><p>Send this code to the user privately. It can be used once to create a password.</p></div><div className='user-setup-code-row'><code>{setupCredential.code}</code><button className='user-admin-secondary' onClick={async()=>{try{await navigator.clipboard.writeText(setupCredential.code);setUsersNotice('Setup code copied. Share it privately.');}catch{setUsersError('Could not copy automatically. Select and copy the code.');}}}>Copy code</button></div></section>}
+  <section className='user-admin-card user-directory-card'><div className='user-admin-card-heading'><div><span className='eyebrow'>ACCOUNT DIRECTORY</span><h3>Company users</h3><p>Role changes take effect the next time an account is checked. Deactivation revokes active sessions.</p></div><span className='user-count'>{roleUsers.length} account{roleUsers.length===1?'':'s'}</span></div>
+   {usersLoading?<div className='empty'>Loading user accounts…</div>:roleUsers.length?<div className='user-admin-table-wrap'><table className='user-admin-table'><thead><tr><th>Account</th><th>Role</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead><tbody>{roleUsers.map(account=>{const isSelf=String(account.email||'').toLowerCase()===String(user?.email||'').toLowerCase();return <tr key={account.id}><td><strong>{account.email}</strong>{isSelf&&<span className='user-self-tag'>You</span>}</td><td><select value={account.role} disabled={usersBusy||isSelf} onChange={e=>void changeRoleUser(account.id,e.target.value)} aria-label={'Role for '+account.email}><option value='super_admin'>Super Admin</option><option value='planner'>Planner</option><option value='operator'>Operator</option></select></td><td><span className={account.password_configured?'user-password-set':'user-password-pending'}>{account.password_configured?'Password set':'Setup pending'}</span></td><td><span className={account.is_active?'user-state-active':'user-state-inactive'}>{account.is_active?'Active':'Inactive'}</span></td><td><div className='user-admin-row-actions'><button disabled={usersBusy||isSelf} onClick={()=>void resetRoleUserPassword(account)}>Reset password</button><button className={account.is_active?'user-deactivate':''} disabled={usersBusy||isSelf} onClick={()=>void toggleRoleUserActive(account)}>{account.is_active?'Deactivate':'Activate'}</button></div></td></tr>;})}</tbody></table></div>:<div className='empty'>No user accounts found.</div>}
+  </section>
+ </main>}
  {view==='operator'&&<main><section className='operator-card'>
  <div className='operator-clock'><div><span className='eyebrow'>CURRENT DATE & TIME</span><strong>{now.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</strong></div><b>{now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})}</b></div>
  <div className='operator-top'><div><span className='eyebrow'>OPERATOR SCAN</span><h2>{selectedPlan?.product_name||'Select your production assignment'}</h2><p>{selectedPlan?(selectedPlan.brand||'—')+' · '+selectedPlan.model+' · '+selectedPlan.production_line:'Choose a line, brand and product to load the matching active plan.'}</p></div></div>

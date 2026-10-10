@@ -43,6 +43,31 @@ function clientIp(request: Request): string {
     ?? "unknown";
 }
 
+
+async function getAppUserForRequest(request: Request) {
+  const token = request.headers.get("x-app-session") ?? "";
+  if (token.length < 32) return { user: null, status: 401, error: "Please sign in again." };
+  const { data: session, error } = await db.from("app_auth_sessions")
+    .select("id,user_id,expires_at,revoked_at")
+    .eq("token_hash", await sha256Hex(token)).maybeSingle();
+  if (error) throw error;
+  if (!session || session.revoked_at || Date.parse(session.expires_at) <= Date.now()) {
+    return { user: null, status: 401, error: "Your session has expired. Please sign in again." };
+  }
+  const { data: user, error: userError } = await db.from("app_users")
+    .select("id,email,role,is_active").eq("id", session.user_id).maybeSingle();
+  if (userError) throw userError;
+  if (!user || !user.is_active) return { user: null, status: 401, error: "This account is inactive. Contact your administrator." };
+  if (user.role !== "super_admin") return { user, status: 403, error: "Only a Super Admin can configure user access." };
+  return { user, status: 200, error: "" };
+}
+
+function newSetupCode(): string {
+  return randomToken(18);
+}
+
+const allowedAppRoles = new Set(["super_admin", "planner", "operator"]);
+
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
@@ -110,6 +135,99 @@ Deno.serve(async (request: Request) => {
       });
       if (sessionError) throw sessionError;
       return json({ ok: true, token, expiresAt, user: { email: user.email, role: user.role } });
+    }
+
+    if (["list-users", "create-user", "update-user-role", "set-user-active", "reset-user-password"].includes(action)) {
+      const access = await getAppUserForRequest(request);
+      if (!access.user || access.status !== 200) return json({ error: access.error }, access.status);
+
+      if (action === "list-users") {
+        const { data: rows, error } = await db.from("app_users")
+          .select("id,email,role,is_active,password_hash,created_at,updated_at")
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        return json({ users: (rows ?? []).map((row) => ({
+          id: row.id,
+          email: row.email,
+          role: row.role,
+          is_active: row.is_active,
+          password_configured: Boolean(row.password_hash),
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        })) });
+      }
+
+      if (action === "create-user") {
+        const email = String(body?.email ?? "").trim().toLowerCase();
+        const role = String(body?.role ?? "");
+        if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          return json({ error: "Enter a valid company email address." });
+        }
+        if (!allowedAppRoles.has(role)) return json({ error: "Choose a valid role." });
+        const { data: existing, error: existingError } = await db.from("app_users")
+          .select("id").eq("email", email).maybeSingle();
+        if (existingError) throw existingError;
+        if (existing) return json({ error: "An account already exists for this email address." });
+        const setupCode = newSetupCode();
+        const { data: created, error } = await db.from("app_users").insert({
+          email, role, is_active: true, password_hash: null, setup_token_hash: await sha256Hex(setupCode),
+        }).select("id,email,role,is_active,created_at").single();
+        if (error) throw error;
+        return json({ user: { ...created, password_configured: false }, setupCode });
+      }
+
+      const userId = String(body?.userId ?? "");
+      if (!userId) return json({ error: "User ID is required." });
+      if (userId === access.user.id) return json({ error: "You cannot change your own role, deactivate yourself, or reset your own password here." });
+
+      const { data: target, error: targetError } = await db.from("app_users")
+        .select("id,email,role,is_active").eq("id", userId).maybeSingle();
+      if (targetError) throw targetError;
+      if (!target) return json({ error: "The selected account was not found." });
+
+      if (action === "update-user-role") {
+        const role = String(body?.role ?? "");
+        if (!allowedAppRoles.has(role)) return json({ error: "Choose a valid role." });
+        if (target.is_active && target.role === "super_admin" && role !== "super_admin") {
+          const { count, error } = await db.from("app_users").select("id", { count: "exact", head: true })
+            .eq("role", "super_admin").eq("is_active", true);
+          if (error) throw error;
+          if ((count ?? 0) <= 1) return json({ error: "At least one active Super Admin must remain." });
+        }
+        const { error } = await db.from("app_users").update({ role, updated_at: new Date().toISOString() }).eq("id", userId);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+
+      if (action === "set-user-active") {
+        const isActive = Boolean(body?.isActive);
+        if (!isActive && target.is_active && target.role === "super_admin") {
+          const { count, error } = await db.from("app_users").select("id", { count: "exact", head: true })
+            .eq("role", "super_admin").eq("is_active", true);
+          if (error) throw error;
+          if ((count ?? 0) <= 1) return json({ error: "At least one active Super Admin must remain." });
+        }
+        const { error } = await db.from("app_users").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", userId);
+        if (error) throw error;
+        if (!isActive) {
+          await db.from("app_auth_sessions").update({ revoked_at: new Date().toISOString() })
+            .eq("user_id", userId).is("revoked_at", null);
+        }
+        return json({ ok: true });
+      }
+
+      if (action === "reset-user-password") {
+        const setupCode = newSetupCode();
+        const { error } = await db.from("app_users").update({
+          password_hash: null,
+          setup_token_hash: await sha256Hex(setupCode),
+          updated_at: new Date().toISOString(),
+        }).eq("id", userId);
+        if (error) throw error;
+        await db.from("app_auth_sessions").update({ revoked_at: new Date().toISOString() })
+          .eq("user_id", userId).is("revoked_at", null);
+        return json({ user: { id: target.id, email: target.email, role: target.role }, setupCode });
+      }
     }
 
     const token = request.headers.get("x-app-session") ?? "";

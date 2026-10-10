@@ -7,9 +7,15 @@ alter table public.app_users
   add column if not exists setup_token_hash text,
   add column if not exists is_active boolean not null default true;
 
+alter table public.app_users drop constraint if exists app_users_role_check;
 update public.app_users
-set email = lower(btrim(email))
-where email is distinct from lower(btrim(email));
+set email = lower(btrim(email)),
+    role = case role when 'admin' then 'super_admin' when 'supervisor' then 'planner' else role end,
+    updated_at = now()
+where email is distinct from lower(btrim(email))
+   or role in ('admin','supervisor');
+alter table public.app_users
+  add constraint app_users_role_check check (role = any (array['super_admin','planner','operator']));
 
 create table if not exists public.app_auth_sessions (
   id uuid primary key default gen_random_uuid(),
@@ -40,7 +46,7 @@ revoke all on public.app_login_attempts from anon, authenticated;
 revoke all on public.app_users from anon, authenticated;
 grant select, insert, update, delete on public.app_auth_sessions to service_role;
 grant select, insert, update, delete on public.app_login_attempts to service_role;
-grant select, update on public.app_users to service_role;
+grant select, insert, update, delete on public.app_users to service_role;
 grant usage, select on sequence public.app_login_attempts_id_seq to service_role;
 
 grant select, insert, update on public.production_plans to anon, authenticated;
@@ -114,60 +120,60 @@ drop policy if exists "management update serial numbers" on public.serial_number
 drop policy if exists "custom role read production plans" on public.production_plans;
 create policy "custom role read production plans" on public.production_plans
 for select to anon, authenticated
-using (private.custom_app_role() in ('operator','supervisor','admin'));
+using (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom management insert production plans" on public.production_plans;
 create policy "custom management insert production plans" on public.production_plans
 for insert to anon, authenticated
-with check (private.custom_app_role() in ('supervisor','admin'));
+with check (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom management update production plans" on public.production_plans;
 create policy "custom management update production plans" on public.production_plans
 for update to anon, authenticated
-using (private.custom_app_role() in ('operator','supervisor','admin'))
-with check (private.custom_app_role() in ('operator','supervisor','admin'));
+using (private.custom_app_role() in ('operator','planner','super_admin'))
+with check (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom role read plan serials" on public.plan_serials;
 create policy "custom role read plan serials" on public.plan_serials
 for select to anon, authenticated
-using (private.custom_app_role() in ('operator','supervisor','admin'));
+using (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom management insert plan serials" on public.plan_serials;
 create policy "custom management insert plan serials" on public.plan_serials
 for insert to anon, authenticated
-with check (private.custom_app_role() in ('supervisor','admin'));
+with check (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom operator update plan serials" on public.plan_serials;
 create policy "custom operator update plan serials" on public.plan_serials
 for update to anon, authenticated
-using (private.custom_app_role() in ('operator','supervisor','admin'))
-with check (private.custom_app_role() in ('operator','supervisor','admin'));
+using (private.custom_app_role() in ('operator','planner','super_admin'))
+with check (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom role read scan events" on public.scan_events;
 create policy "custom role read scan events" on public.scan_events
 for select to anon, authenticated
-using (private.custom_app_role() in ('operator','supervisor','admin'));
+using (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom role insert scan events" on public.scan_events;
 create policy "custom role insert scan events" on public.scan_events
 for insert to anon, authenticated
-with check (private.custom_app_role() in ('operator','supervisor','admin'));
+with check (private.custom_app_role() in ('operator','planner','super_admin'));
 
 drop policy if exists "custom management read serial numbers" on public.serial_numbers;
 create policy "custom management read serial numbers" on public.serial_numbers
 for select to anon, authenticated
-using (private.custom_app_role() in ('supervisor','admin'));
+using (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom management insert serial numbers" on public.serial_numbers;
 create policy "custom management insert serial numbers" on public.serial_numbers
 for insert to anon, authenticated
-with check (private.custom_app_role() in ('supervisor','admin'));
+with check (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom management update serial numbers" on public.serial_numbers;
 create policy "custom management update serial numbers" on public.serial_numbers
 for update to anon, authenticated
-using (private.custom_app_role() in ('supervisor','admin'))
-with check (private.custom_app_role() in ('supervisor','admin'));
+using (private.custom_app_role() in ('planner','super_admin'))
+with check (private.custom_app_role() in ('planner','super_admin'));
 
 create or replace function public.protect_operator_plan_update()
 returns trigger

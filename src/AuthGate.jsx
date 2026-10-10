@@ -121,32 +121,6 @@ export default function AuthGate() {
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    if (user?.role !== 'operator') return undefined;
-    let forced = false;
-    let observer;
-    const forceOperatorView = () => {
-      if (forced) return true;
-      const buttons = [...document.querySelectorAll('.app .top-actions .nav-button')];
-      const operatorButton = buttons.find(button => button.textContent?.trim().toLowerCase() === 'operator');
-      if (operatorButton) {
-        forced = true;
-        observer?.disconnect();
-        operatorButton.click();
-        return true;
-      }
-      return false;
-    };
-    observer = new MutationObserver(forceOperatorView);
-    const root = document.getElementById('root');
-    if (root) observer.observe(root, { subtree: true, childList: true });
-    const timer = setTimeout(forceOperatorView, 0);
-    return () => {
-      clearTimeout(timer);
-      observer?.disconnect();
-    };
-  }, [user?.role]);
-
   const signOut = async () => {
     try {
       await supabase.functions.invoke('app-auth', { body: { action: 'logout' } });
@@ -160,7 +134,7 @@ export default function AuthGate() {
   if (!user) return <LoginScreen onAuthenticated={setUser} />;
 
   return <div className={'auth-shell auth-role-' + user.role}>
-    <div className='auth-userbar'><span><b>{user.email}</b><em>{user.role}</em></span><button onClick={signOut}>Sign out</button></div>
-    <App />
+    <div className='auth-userbar'><span><b>{user.email}</b><em>{{super_admin:'Super Admin',planner:'Planner',operator:'Operator'}[user.role]||user.role}</em></span><button onClick={signOut}>Sign out</button></div>
+    <App user={user} />
   </div>;
 }
