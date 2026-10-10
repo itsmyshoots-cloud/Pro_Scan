@@ -8,16 +8,29 @@ pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
 
 const lines=['Line 1','Line 2','Line 3'];
 function createHourlyTargets(start='09:00',end='18:00',previous=[]){
- const toMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m===0?h*60+m:NaN;};
+ const toMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m>=0&&m<60?h*60+m:NaN;};
  const startMinutes=toMinutes(start),endMinutes=toMinutes(end);
- if(!Number.isFinite(startMinutes)||!Number.isFinite(endMinutes)||endMinutes<=startMinutes)return [];
- const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]));
+ if(!Number.isFinite(startMinutes)||!Number.isFinite(endMinutes)||endMinutes<=startMinutes||(endMinutes-startMinutes)%60!==0)return [];
+ const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]);
  const output=[];
  for(let minute=startMinutes;minute<endMinutes&&output.length<24;minute+=60){
-  const hour=String(Math.floor(minute/60)).padStart(2,'0')+':00';
+  const hour=String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');
   output.push({hour,planned_qty:targetByHour.get(hour)||0});
  }
  return output;
+}
+function formatClock12(value){
+ const match=/^(\d{2}):(\d{2})$/.exec(String(value||'').slice(0,5));
+ if(!match)return String(value||'');
+ const hour=Number(match[1]),minute=Number(match[2]),suffix=hour>=12?'PM':'AM';
+ return String(hour%12||12).padStart(2,'0')+':'+String(minute).padStart(2,'0')+' '+suffix;
+}
+function getHourlySlotLabel(value){
+ const parts=String(value||'').slice(0,5).split(':').map(Number);
+ if(parts.length!==2||parts.some(part=>!Number.isFinite(part)))return String(value||'');
+ const end=((parts[0]*60+parts[1]+60)%(24*60));
+ const endValue=String(Math.floor(end/60)).padStart(2,'0')+':'+String(end%60).padStart(2,'0');
+ return formatClock12(value)+' – '+formatClock12(endValue);
 }
 function localDateKey(date){
  return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
@@ -250,7 +263,12 @@ export default function App(){
    if(serial.plan_id!==dashboardHourlyPlan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
    const scannedAt=new Date(serial.scanned_at);
    if(localDateKey(scannedAt)!==dashboardHourlyPlan.production_date)continue;
-   const hour=String(scannedAt.getHours()).padStart(2,'0')+':00';
+   const shift=getPlanShiftWindow(dashboardHourlyPlan);
+   if(!shift)continue;
+   const scannedMinutes=getLocalMinutes(scannedAt);
+   if(scannedMinutes<shift.start||scannedMinutes>=shift.end)continue;
+   const slotMinutes=shift.start+Math.floor((scannedMinutes-shift.start)/60)*60;
+   const hour=String(Math.floor(slotMinutes/60)).padStart(2,'0')+':'+String(slotMinutes%60).padStart(2,'0');
    const row=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
    row.actual_qty+=1;buckets.set(hour,row);
   }
@@ -269,10 +287,15 @@ export default function App(){
     for(const serial of monitoringSerials){
      if(serial.plan_id!==plan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
      const timestamp=new Date(serial.scanned_at);if(localDateKey(timestamp)!==plan.production_date)continue;
-     const hour=String(timestamp.getHours()).padStart(2,'0')+':00';
+     const shift=getPlanShiftWindow(plan);
+     if(!shift)continue;
+     const scannedMinutes=getLocalMinutes(timestamp);
+     if(scannedMinutes<shift.start||scannedMinutes>=shift.end)continue;
+     const slotMinutes=shift.start+Math.floor((scannedMinutes-shift.start)/60)*60;
+     const hour=String(Math.floor(slotMinutes/60)).padStart(2,'0')+':'+String(slotMinutes%60).padStart(2,'0');
      const row=buckets.get(hour)||{hour,planned_qty:0,actual_scanned:0};row.actual_scanned+=1;buckets.set(hour,row);
     }
-    for(const row of buckets.values())output.push({product:plan.product_name,brand:plan.brand||'',model:plan.model,date:plan.production_date,month:(plan.production_date||'').slice(0,7),line:plan.production_line,status:plan.status,hour:row.hour,planned_qty:row.planned_qty,actual_scanned:row.actual_scanned,variance:row.actual_scanned-row.planned_qty});
+    for(const row of buckets.values())output.push({product:plan.product_name,brand:plan.brand||'',model:plan.model,date:plan.production_date,month:(plan.production_date||'').slice(0,7),line:plan.production_line,status:plan.status,hour:getHourlySlotLabel(row.hour),planned_qty:row.planned_qty,actual_scanned:row.actual_scanned,variance:row.actual_scanned-row.planned_qty});
    }
    return output.sort((a,b)=>(a.date+' '+a.line+' '+a.hour).localeCompare(b.date+' '+b.line+' '+b.hour));
   }
@@ -312,7 +335,12 @@ export default function App(){
    if(serial.plan_id!==selectedHourlyPlan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
    const scannedAt=new Date(serial.scanned_at);
    if(localDateKey(scannedAt)!==selectedHourlyPlan.production_date)continue;
-   const hour=String(scannedAt.getHours()).padStart(2,'0')+':00';
+   const shift=getPlanShiftWindow(selectedHourlyPlan);
+   if(!shift)continue;
+   const scannedMinutes=getLocalMinutes(scannedAt);
+   if(scannedMinutes<shift.start||scannedMinutes>=shift.end)continue;
+   const slotMinutes=shift.start+Math.floor((scannedMinutes-shift.start)/60)*60;
+   const hour=String(Math.floor(slotMinutes/60)).padStart(2,'0')+':'+String(slotMinutes%60).padStart(2,'0');
    const bucket=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
    bucket.actual_qty+=1;buckets.set(hour,bucket);
   }
@@ -321,8 +349,8 @@ export default function App(){
  const hourlyChartMax=useMemo(()=>Math.max(1,...hourlyReportRows.flatMap(row=>[row.planned_qty,row.actual_qty])),[hourlyReportRows]);
  const downloadHourlyReport=()=>{
   if(!selectedHourlyPlan||!hourlyReportRows.length)return;
-  const headers=['Product','Brand','Model','Production Date','Production Line','Plan Status','Hour','Planned Quantity','Actual Scanned','Variance (Actual - Planned)'];
-  const data=hourlyReportRows.map(row=>[selectedHourlyPlan.product_name,selectedHourlyPlan.brand||'',selectedHourlyPlan.model,selectedHourlyPlan.production_date,selectedHourlyPlan.production_line,selectedHourlyPlan.status,row.hour, row.planned_qty,row.actual_qty,row.variance]);
+  const headers=['Product','Brand','Model','Production Date','Production Line','Plan Status','Hourly Slot','Planned Quantity','Actual Scanned','Variance (Actual - Planned)'];
+  const data=hourlyReportRows.map(row=>[selectedHourlyPlan.product_name,selectedHourlyPlan.brand||'',selectedHourlyPlan.model,selectedHourlyPlan.production_date,selectedHourlyPlan.production_line,selectedHourlyPlan.status,getHourlySlotLabel(row.hour), row.planned_qty,row.actual_qty,row.variance]);
   const slug=String(selectedHourlyPlan.product_name||'production').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   downloadCsv('hourly-production-'+slug+'-'+selectedHourlyPlan.production_date+'.csv',headers,data);
  };
@@ -489,7 +517,7 @@ export default function App(){
  </section>
  <section className='panel dashboard-hourly-panel'><div className='panel-head'><div><span className='eyebrow'>PLAN-WISE HOURLY OUTPUT</span><h3>Hourly planned vs actual</h3><p>The graph shows one production plan at a time, so each hourly target is compared only with scans belonging to that plan.</p></div><button onClick={()=>setView('live-monitoring')}>Open Live Monitoring →</button></div><div className='dashboard-hourly-plan-select'><label>Select active production plan<select value={dashboardHourlyPlan?.id||''} onChange={e=>setDashboardHourlyPlanId(e.target.value)}>{activePlans.map(plan=><option value={plan.id} key={plan.id}>{plan.production_date} · {plan.brand||'—'} · {plan.product_name} · {plan.model} · {plan.production_line}</option>)}</select></label>{dashboardHourlyPlan&&<div><b>{dashboardHourlyPlan.product_name}</b><span>{dashboardHourlyPlan.brand||'—'} · {dashboardHourlyPlan.model} · {dashboardHourlyPlan.production_line} · {dashboardHourlyPlan.production_date}</span><small>Plan target: {Number(dashboardHourlyPlan.planned_qty||0).toLocaleString()} units</small></div>}</div>
   <div className='dashboard-hourly-legend'><span><i className='legend-planned'/> Planned</span><span><i className='legend-actual'/> Actual scanned</span><small>{monitoringUpdatedAt?'Updated '+monitoringUpdatedAt.toLocaleTimeString('en-IN'):'Loading production data…'}</small></div>
-  {activeHourlySummary.length?<div className='active-hourly-chart-scroll'><div className='active-hourly-chart' style={{minWidth:Math.max(620,activeHourlySummary.length*58)+'px'}}>{activeHourlySummary.map(row=><div className='active-hourly-column' key={row.hour} title={row.hour+' · target '+row.planned_qty+' · actual '+row.actual_qty}><div className='active-hourly-values'><span>{row.planned_qty||'·'}</span><span>{row.actual_qty||'·'}</span></div><div className='active-hourly-bars'><div className='hourly-bar planned-hour-bar' style={{height:(row.planned_qty?Math.max(3,row.planned_qty/activeHourlyMax*100):0)+'%'}}/><div className='hourly-bar actual-hour-bar' style={{height:(row.actual_qty?Math.max(3,row.actual_qty/activeHourlyMax*100):0)+'%'}}/></div><b>{row.hour}</b></div>)}</div></div>:<div className='empty'>No hourly output yet. Hourly targets will appear here once active plans include hourly targets; actual scans are added by scan time.</div>}
+  {activeHourlySummary.length?<div className='active-hourly-chart-scroll'><div className='active-hourly-chart' style={{minWidth:Math.max(620,activeHourlySummary.length*58)+'px'}}>{activeHourlySummary.map(row=><div className='active-hourly-column' key={row.hour} title={row.hour+' · target '+row.planned_qty+' · actual '+row.actual_qty}><div className='active-hourly-values'><span>{row.planned_qty||'·'}</span><span>{row.actual_qty||'·'}</span></div><div className='active-hourly-bars'><div className='hourly-bar planned-hour-bar' style={{height:(row.planned_qty?Math.max(3,row.planned_qty/activeHourlyMax*100):0)+'%'}}/><div className='hourly-bar actual-hour-bar' style={{height:(row.actual_qty?Math.max(3,row.actual_qty/activeHourlyMax*100):0)+'%'}}/></div><b>{formatClock12(row.hour)}</b></div>)}</div></div>:<div className='empty'>No hourly output yet. Hourly targets will appear here once active plans include hourly targets; actual scans are added by scan time.</div>}
  </section>
  <div className='dashboard-footer'><span><i className='live-dot'/> Monitoring refreshes automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Loading…'}</span><button onClick={()=>setView('operator')}>Open Operator Scanner →</button></div>
 </main>}
@@ -516,9 +544,9 @@ export default function App(){
   {hourlyReportRows.length?<div className='hourly-chart-scroll'><div className='hourly-chart' style={{minWidth:Math.max(520,hourlyReportRows.length*66)+'px'}}>{hourlyReportRows.map(row=><div className='hourly-chart-column' key={row.hour} title={row.hour+' — planned '+row.planned_qty+', actual '+row.actual_qty}>
    <div className='hourly-bar-values'><span>{row.planned_qty?row.planned_qty.toLocaleString():'·'}</span><span>{row.actual_qty?row.actual_qty.toLocaleString():'·'}</span></div>
    <div className='hourly-bars'><div className='hourly-bar planned-hour-bar' style={{height:(row.planned_qty?Math.max(3,row.planned_qty/hourlyChartMax*100):0)+'%'}}/><div className='hourly-bar actual-hour-bar' style={{height:(row.actual_qty?Math.max(3,row.actual_qty/hourlyChartMax*100):0)+'%'}}/></div>
-   <b className='hourly-hour-label'>{row.hour}</b><small className={row.variance<0?'variance-negative':row.variance>0?'variance-positive':''}>{row.variance>0?'+':''}{row.variance.toLocaleString()}</small>
+   <b className='hourly-hour-label'>{formatClock12(row.hour)}</b><small className={row.variance<0?'variance-negative':row.variance>0?'variance-positive':''}>{row.variance>0?'+':''}{row.variance.toLocaleString()}</small>
   </div>)}</div></div>:<div className='empty'>No hourly target or scanned-serial data exists for this plan date yet.</div>}
-  {hourlyReportRows.length>0&&<div className='hourly-table-wrap'><table className='hourly-report-table'><thead><tr><th>Hour</th><th>Planned quantity</th><th>Actual scanned</th><th>Variance</th></tr></thead><tbody>{hourlyReportRows.map(row=><tr key={row.hour}><td>{row.hour}–{String(Number(row.hour.slice(0,2))+1).padStart(2,'0')}:00</td><td>{row.planned_qty.toLocaleString()}</td><td>{row.actual_qty.toLocaleString()}</td><td className={row.variance<0?'variance-negative':row.variance>0?'variance-positive':''}>{row.variance>0?'+':''}{row.variance.toLocaleString()}</td></tr>)}</tbody></table></div>}
+  {hourlyReportRows.length>0&&<div className='hourly-table-wrap'><table className='hourly-report-table'><thead><tr><th>Hour</th><th>Planned quantity</th><th>Actual scanned</th><th>Variance</th></tr></thead><tbody>{hourlyReportRows.map(row=><tr key={row.hour}><td>{getHourlySlotLabel(row.hour)}</td><td>{row.planned_qty.toLocaleString()}</td><td>{row.actual_qty.toLocaleString()}</td><td className={row.variance<0?'variance-negative':row.variance>0?'variance-positive':''}>{row.variance>0?'+':''}{row.variance.toLocaleString()}</td></tr>)}</tbody></table></div>}
   </>:<div className='empty'>No active plans are available on this line.</div>}
  </section></div>}
  <div className='dashboard-footer'><span><i className='live-dot'/> Live values refresh automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleString('en-IN'):'Loading…'}</span><button onClick={()=>setView('manage')}>Manage production plans →</button></div>
@@ -535,9 +563,9 @@ export default function App(){
  </div>
  <section className='hourly-target-editor'>
   <div className='hourly-editor-head'><div><span className='eyebrow'>HOURLY PRODUCTION TARGET</span><h3>Plan output for every hour</h3><p>Enter the number of units you expect to complete in each hour of the shift. The targets must add up to the total planned quantity.</p></div>
-   <div className='shift-time-fields'><label>Shift start<input type='time' step='3600' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>createHourlyTargets(next,shiftEnd,previous));}}/></label><label>Shift end<input type='time' step='3600' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>createHourlyTargets(shiftStart,next,previous));}}/></label></div>
+   <div className='shift-time-fields'><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>createHourlyTargets(next,shiftEnd,previous));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>createHourlyTargets(shiftStart,next,previous));}}/></label></div>
   </div>
-  {hourlyTargets.length?<div className='hourly-target-grid'>{hourlyTargets.map((row,index)=><label className='hour-target-field' key={row.hour}><span>{row.hour} – {String(Number(row.hour.slice(0,2))+1).padStart(2,'0')}:00</span><small>Planned units</small><input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/></label>)}</div>:<div className='notice'>Choose a shift start and end time with a whole-hour interval; shift end must be later than shift start.</div>}
+  {hourlyTargets.length?<div className='hourly-target-grid'>{hourlyTargets.map((row,index)=><label className='hour-target-field' key={row.hour}><span>{getHourlySlotLabel(row.hour)}</span><small>Planned units</small><input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/></label>)}</div>:<div className='notice'>Choose a start and end time with complete 60-minute slots. For example, 09:30 AM to 05:30 PM.</div>}
   <div className='hourly-target-summary'><div><span>Hourly target total</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'target-match':'target-mismatch'}>{hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'✓ Totals match':'Adjust hourly targets to match total planned quantity'}</span></div>
  </section>
  <div className='upload'><h3>Supplier serial-number file</h3><p>Upload the original supplier PDF, CSV, or TXT. Pro Scan extracts label and serial pairs, checks duplicates inside the batch, and compares the complete upload with serials already stored in the database.</p><input type='file' accept='.csv,.txt,.pdf,application/pdf,text/csv,text/plain' disabled={busy} onChange={importFile}/><div className='range'>{rows.length?<><b>{rows.length.toLocaleString()}</b> serial-label pairs loaded{sourceFile?' from '+sourceFile:''}{fileInfo?' · '+fileInfo:''}<p>Plan allocation: <b>{Number(form.planned_qty||0).toLocaleString()}</b> units. The first planned-quantity labels will be allocated.</p></>:<>No serial file loaded. A valid supplier file is required. Demo serials are disabled.</>}</div>
