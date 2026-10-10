@@ -522,3 +522,30 @@
  .plan-wise-quantities>strong{margin-left:0}
  .dashboard-hourly-plan-select{grid-template-columns:minmax(0,1fr);gap:9px;padding:10px}
 }
+
+
+/* Lifecycle status display and streamlined production overview */
+.plan-status-badge{display:inline-flex;align-items:center;justify-content:center;min-width:86px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;color:#475569;font-size:10px;font-weight:850;text-transform:capitalize;white-space:nowrap}
+.plan-status-badge.status-draft,.plan-status-badge.status-draft{background:#f8fafc;border-color:#cbd5e1;color:#475569}
+.plan-status-badge.status-active{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.plan-status-badge.status-completed{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+.plan-status-badge.status-cancelled{background:#fff1f2;border-color:#fecdd3;color:#be123c}
+.dashboard-active-plans-wide{margin:0;padding:17px;min-width:0}
+.dashboard-active-plans-wide .panel-head{align-items:flex-start}
+.dashboard-active-plans-wide .panel-head p{margin:4px 0 0;color:#64748b;font-size:11px}
+.dashboard-active-plans-wide .dashboard-plan-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}
+.dashboard-active-plans-wide .dashboard-plan-row{min-width:0}
+.dashboard-active-plans-wide .dashboard-plan-main{min-width:0}
+.dashboard-hero-actions{flex-wrap:wrap}
+.dashboard-hero-actions button{white-space:nowrap}
+.dashboard-hourly-plan-select label{min-width:0}
+.manage-production-page .management-table{min-width:970px}
+.manage-production-page .table-actions button{padding:6px 8px;font-size:9px}
+@media(max-width:850px){
+ .dashboard-active-plans-wide .dashboard-plan-list{grid-template-columns:minmax(0,1fr)}
+ .dashboard-active-plans-wide{padding:12px}
+ .dashboard-active-plans-wide .panel-head{flex-direction:column}
+ .dashboard-active-plans-wide .panel-head button{width:100%}
+ .dashboard-hero-actions{width:100%}
+ .dashboard-hero-actions button{flex:1}
+}
