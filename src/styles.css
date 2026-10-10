@@ -1017,3 +1017,72 @@ html:has(.app-operator),body:has(.app-operator),#root:has(.app-operator){height:
  .operator-assignment-card,.operator-clock-block{border-radius:11px}.operator-scan-input-panel{padding:6px}.hardware-scanner-entry{margin:4px 0;padding:6px}.hardware-scanner-entry>input{height:34px}
  .operator-workstation-side{gap:5px}.operator-plan-progress-card{padding:7px 9px}.operator-workstation-metric{padding:6px 8px}.operator-shift-info{padding:5px 7px}.operator-recent-row{min-height:23px}
 }
+
+
+/* Shared production UI polish: predictable hierarchy, readable navigation and consistent controls */
+.app{min-width:0}
+.app:not(.app-operator){max-width:1680px;padding:clamp(16px,2vw,30px) clamp(16px,2.4vw,36px)}
+.app:not(.app-operator)>header{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;min-height:60px;height:auto;overflow:visible;margin:0 0 24px;padding:5px 0 15px;border-bottom:1px solid #e2e8f0;z-index:5}
+.app:not(.app-operator)>header>div:first-child{flex:0 0 auto;min-width:max-content;display:flex;flex-direction:column;gap:2px}
+.app:not(.app-operator)>header .eyebrow{font-size:10px;line-height:1.2;letter-spacing:.15em}
+.app:not(.app-operator)>header h1{display:block;margin:0;font-size:clamp(27px,2.2vw,35px);line-height:1.08;letter-spacing:-.045em;color:#0f172a;overflow:visible}
+.app .top-actions{display:flex;flex:1 1 620px;min-width:0;align-items:center;justify-content:flex-end;align-content:center;gap:6px;row-gap:6px;flex-wrap:wrap}
+.app .top-actions .live{margin:0 5px 0 0;white-space:nowrap;font-size:12px;letter-spacing:.025em}
+.app .top-actions .nav-button{min-height:37px;padding:8px 12px;border:1px solid transparent;border-radius:10px;background:transparent;color:#475569;font-size:12px;line-height:1.2;font-weight:750;white-space:nowrap}
+.app .top-actions .nav-button:hover{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
+.app .top-actions .nav-button.is-active{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;box-shadow:0 1px 2px rgba(37,99,235,.05)}
+.app button{transition:background-color .14s ease,border-color .14s ease,color .14s ease,box-shadow .14s ease,transform .14s ease}
+.app button:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.app button:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
+.app input:focus-visible,.app select:focus-visible,.app textarea:focus-visible{outline:3px solid #dbeafe;border-color:#60a5fa}
+.app .primary{background:#0f172a;color:#fff;border-color:#0f172a}
+.app .primary:hover:not(:disabled){background:#1e293b;border-color:#334155}
+.app .hero,.app .panel,.app .operator-card,.app .preview-panel{border-color:#e2e8f0;border-radius:17px;box-shadow:0 6px 24px rgba(15,23,42,.035)}
+.app .panel{padding:clamp(16px,1.6vw,24px);margin-top:16px}
+.app .hero{padding:clamp(20px,2.4vw,32px)}
+.app .panel-head{gap:16px;flex-wrap:wrap}
+.app h2{font-size:clamp(20px,1.7vw,27px);line-height:1.15;letter-spacing:-.035em}
+.app h3{font-size:clamp(15px,1.25vw,19px);line-height:1.25;letter-spacing:-.02em}
+.app p{line-height:1.5}
+.app label{color:#475569;font-weight:750}
+.app input,.app select,.app textarea{border-color:#d5dee8;border-radius:10px}
+.app main{min-width:0}
+.app main>section{min-width:0}
+.app main table{border-collapse:separate;border-spacing:0}
+.app main table thead th{background:#f8fafc;color:#64748b;font-size:10px;font-weight:900;letter-spacing:.045em;position:sticky;top:0;z-index:2}
+.app main table td{font-size:12px;color:#334155}
+.app main table tbody tr:hover{background:#f8fbff}
+.app .notice,.app .success{border:1px solid #dbeafe;border-radius:10px;line-height:1.45}
+.app .success{border-color:#bbf7d0}
+.app .empty{padding:34px 20px;border-radius:12px;background:#f8fafc;color:#64748b}
+.app-operator{padding:7px 12px 9px!important}
+.app-operator>header{position:relative!important;display:flex!important;flex-wrap:wrap!important;align-items:center!important;justify-content:space-between!important;gap:8px 20px!important;height:auto!important;min-height:46px!important;max-height:none!important;flex:0 0 auto!important;overflow:visible!important;margin:0 0 7px!important;padding:3px 0 8px!important;border-bottom:1px solid #dbe4ee}
+.app-operator>header>div:first-child{flex:0 0 auto;min-width:max-content;display:flex;flex-direction:column;gap:2px}
+.app-operator h1{display:block!important;font-size:clamp(25px,2vw,31px)!important;line-height:1.08!important;letter-spacing:-.045em;margin:0!important;overflow:visible!important}
+.app-operator>header .eyebrow{font-size:8px!important;line-height:1.15!important}
+.app-operator .top-actions{flex:1 1 550px!important;min-width:0!important;justify-content:flex-end!important;flex-wrap:wrap!important;gap:4px!important;overflow:visible!important}
+.app-operator .top-actions .nav-button{min-height:33px!important;padding:6px 9px!important;font-size:10px!important;line-height:1.2!important}
+.app-operator .top-actions .live{margin-right:3px;font-size:10px}
+@media(max-width:950px){
+ .app:not(.app-operator){padding:16px}
+ .app:not(.app-operator)>header{align-items:flex-start;gap:10px;min-height:0;margin-bottom:18px;padding-bottom:12px}
+ .app .top-actions{flex-basis:100%;justify-content:flex-start}
+ .app .top-actions .nav-button{min-height:35px;padding:7px 10px}
+ .app-operator>header{gap:5px 10px!important}
+ .app-operator .top-actions{flex-basis:100%!important;justify-content:flex-start!important}
+ .app-operator>header{min-height:0!important}
+ .app-operator .operator-workstation-top{flex-basis:clamp(100px,15vh,128px)}
+}
+@media(max-width:620px){
+ .app:not(.app-operator){padding:12px}
+ .app:not(.app-operator)>header h1{font-size:27px}
+ .app .top-actions{gap:4px}
+ .app .top-actions .nav-button{font-size:11px;padding:6px 8px;min-height:32px}
+ .app .hero{align-items:flex-start;flex-direction:column;gap:12px}
+ .app .panel{padding:13px}
+ .app-operator{padding:5px 7px 7px!important}
+ .app-operator>header{gap:5px!important;padding-bottom:5px!important}
+ .app-operator h1{font-size:22px!important}
+ .app-operator .top-actions{gap:3px!important}
+ .app-operator .top-actions .nav-button{padding:4px 6px!important;font-size:9px!important}
+}
