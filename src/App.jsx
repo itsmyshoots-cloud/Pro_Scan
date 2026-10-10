@@ -366,7 +366,7 @@ export default function App({user}){
   const pending=monitoringSerials.filter(row=>ids.has(row.plan_id)&&row.status!=='scanned').length;
   return {line,plans:linePlans.length,target,scanned,pending,percent:target?Math.min(100,Math.round(scanned/target*100)):0};
  }),[activePlans,monitoringSerials]);
- const manageMonthOptions=useMemo(()=>[...new Set(plans.map(plan=>(plan.production_date||'').slice(0,7)).filter(value=>/^\\d{4}-\\d{2}$/.test(value)))].sort().reverse(),[plans]);
+ const manageMonthOptions=useMemo(()=>[...new Set(plans.map(plan=>(plan.production_date||'').slice(0,7)).filter(value=>/^\d{4}-\d{2}$/.test(value)))].sort().reverse(),[plans]);
  const manageModelOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.model).filter(Boolean))].sort(),[plans]);
  const manageLineOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.production_line).filter(Boolean))].sort(),[plans]);
  const filteredPlans=useMemo(()=>plans.filter(plan=>(planStatusFilter==='all'||plan.status===planStatusFilter)&&(!manageFilters.date_from||plan.production_date>=manageFilters.date_from)&&(!manageFilters.date_to||plan.production_date<=manageFilters.date_to)&&(manageFilters.month==='all'||(plan.production_date||'').slice(0,7)===manageFilters.month)&&(manageFilters.model==='all'||plan.model===manageFilters.model)&&(manageFilters.production_line==='all'||plan.production_line===manageFilters.production_line)),[plans,planStatusFilter,manageFilters]);
