@@ -185,6 +185,79 @@ export default function App(){
  }),[activePlans,monitoringSerials]);
  const filteredPlans=useMemo(()=>plans.filter(plan=>planStatusFilter==='all'||plan.status===planStatusFilter),[plans,planStatusFilter]);
 
+ const reportProductOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.product_name).filter(Boolean))].sort(),[plans]);
+ const reportBrandOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.brand).filter(Boolean))].sort(),[plans]);
+ const reportModelOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.model).filter(Boolean))].sort(),[plans]);
+ const reportLineOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.production_line).filter(Boolean))].sort(),[plans]);
+ const reportMonthOptions=useMemo(()=>[...new Set(plans.map(plan=>(plan.production_date||'').slice(0,7)).filter(value=>/^\d{4}-\d{2}$/.test(value)))].sort().reverse(),[plans]);
+ const filteredReportPlans=useMemo(()=>plans.filter(plan=>
+  (reportFilters.product_name==='all'||plan.product_name===reportFilters.product_name)&&
+  (reportFilters.brand==='all'||plan.brand===reportFilters.brand)&&
+  (reportFilters.model==='all'||plan.model===reportFilters.model)&&
+  (reportFilters.production_line==='all'||plan.production_line===reportFilters.production_line)&&
+  (!reportFilters.date_from||plan.production_date>=reportFilters.date_from)&&
+  (!reportFilters.date_to||plan.production_date<=reportFilters.date_to)&&
+  (reportFilters.month==='all'||(plan.production_date||'').slice(0,7)===reportFilters.month)
+ ),[plans,reportFilters]);
+ const activeHourlySummary=useMemo(()=>{
+  const buckets=new Map(),planById=new Map(activePlans.map(plan=>[plan.id,plan]));
+  for(const plan of activePlans){
+   for(const target of Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]){
+    const hour=String(target.hour||'').slice(0,5);if(!/^\d{2}:\d{2}$/.test(hour))continue;
+    const row=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
+    row.planned_qty+=Number(target.planned_qty||0);buckets.set(hour,row);
+   }
+  }
+  for(const serial of monitoringSerials){
+   if(serial.status!=='scanned'||!serial.scanned_at)continue;
+   const plan=planById.get(serial.plan_id);if(!plan)continue;
+   const scannedAt=new Date(serial.scanned_at);if(localDateKey(scannedAt)!==plan.production_date)continue;
+   const hour=String(scannedAt.getHours()).padStart(2,'0')+':00';
+   const row=buckets.get(hour)||{hour,planned_qty:0,actual_qty:0};
+   row.actual_qty+=1;buckets.set(hour,row);
+  }
+  return [...buckets.values()].sort((a,b)=>a.hour.localeCompare(b.hour));
+ },[activePlans,monitoringSerials]);
+ const activeHourlyMax=useMemo(()=>Math.max(1,...activeHourlySummary.flatMap(row=>[row.planned_qty,row.actual_qty])),[activeHourlySummary]);
+ const reportRows=useMemo(()=>{
+  if(reportFilters.type==='hourly'){
+   const output=[];
+   for(const plan of filteredReportPlans){
+    const buckets=new Map();
+    for(const target of Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]){
+     const hour=String(target.hour||'').slice(0,5);if(!/^\d{2}:\d{2}$/.test(hour))continue;
+     buckets.set(hour,{hour,planned_qty:Number(target.planned_qty||0),actual_scanned:0});
+    }
+    for(const serial of monitoringSerials){
+     if(serial.plan_id!==plan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
+     const timestamp=new Date(serial.scanned_at);if(localDateKey(timestamp)!==plan.production_date)continue;
+     const hour=String(timestamp.getHours()).padStart(2,'0')+':00';
+     const row=buckets.get(hour)||{hour,planned_qty:0,actual_scanned:0};row.actual_scanned+=1;buckets.set(hour,row);
+    }
+    for(const row of buckets.values())output.push({product:plan.product_name,brand:plan.brand||'',model:plan.model,date:plan.production_date,month:(plan.production_date||'').slice(0,7),line:plan.production_line,status:plan.status,hour:row.hour,planned_qty:row.planned_qty,actual_scanned:row.actual_scanned,variance:row.actual_scanned-row.planned_qty});
+   }
+   return output.sort((a,b)=>(a.date+' '+a.line+' '+a.hour).localeCompare(b.date+' '+b.line+' '+b.hour));
+  }
+  const detailed=filteredReportPlans.map(plan=>{
+   const units=monitoringSerials.filter(row=>row.plan_id===plan.id);
+   const actual=units.filter(row=>row.status==='scanned').length,target=Number(plan.planned_qty||0);
+   return {product:plan.product_name,brand:plan.brand||'',model:plan.model,date:plan.production_date,month:(plan.production_date||'').slice(0,7),line:plan.production_line,status:plan.status,planned_qty:target,actual_scanned:actual,pending:Math.max(0,target-actual),completion_percent:target?Math.round(actual/target*100):0};
+  });
+  if(reportFilters.group_by==='none')return detailed;
+  const labelByKey={product:'product',brand:'brand',model:'model',date:'date',month:'month',line:'line'};
+  const key=labelByKey[reportFilters.group_by];const groups=new Map();
+  for(const row of detailed){const value=String(row[key]||'Unspecified');const group=groups.get(value)||{group_by:reportFilters.group_by,group_value:value,plans:0,planned_qty:0,actual_scanned:0,pending:0};group.plans+=1;group.planned_qty+=row.planned_qty;group.actual_scanned+=row.actual_scanned;group.pending+=row.pending;groups.set(value,group);}
+  return [...groups.values()].map(group=>({...group,completion_percent:group.planned_qty?Math.round(group.actual_scanned/group.planned_qty*100):0})).sort((a,b)=>a.group_value.localeCompare(b.group_value));
+ },[reportFilters,filteredReportPlans,monitoringSerials]);
+ const downloadProductionReport=()=>{
+  if(!reportRows.length)return;
+  const headers=Object.keys(reportRows[0]);
+  const rows=reportRows.map(row=>headers.map(header=>row[header]??''));
+  const reportType=reportFilters.type==='hourly'?'hourly':'production';
+  downloadCsv('pro-scan-'+reportType+'-report-'+localDateKey(new Date())+'.csv',headers,rows);
+ };
+
+
  const hourlyTargetTotal=useMemo(()=>hourlyTargets.reduce((sum,row)=>sum+Math.max(0,Number(row.planned_qty||0)),0),[hourlyTargets]);
  const selectedLinePlans=useMemo(()=>activePlans.filter(plan=>plan.production_line===selectedMonitoringLine),[activePlans,selectedMonitoringLine]);
  const selectedHourlyPlan=useMemo(()=>selectedLinePlans.find(plan=>plan.id===selectedMonitoringPlanId)||selectedLinePlans[0]||null,[selectedLinePlans,selectedMonitoringPlanId]);
@@ -350,7 +423,7 @@ export default function App(){
  },[camera,selectedPlan?.id]);
  const startCamera=()=>{setMessage('Starting camera…');setCamera(true)};
  const stopCamera=()=>{try{readerRef.current?.reset()}catch{}setCamera(false)};
- return <div className={'app '+(view==='operator'?'app-operator':'')}><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span><button className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='live-monitoring'?'nav-button is-active':'nav-button'} onClick={()=>setView('live-monitoring')}>Live Monitoring</button><button className={view==='planner'?'nav-button is-active':'nav-button'} onClick={()=>setView('planner')}>Production Planning</button><button className={view==='manage'?'nav-button is-active':'nav-button'} onClick={()=>setView('manage')}>Manage Production</button><button className={view==='operator'?'nav-button is-active':'nav-button'} onClick={()=>setView('operator')}>Operator</button></div></header>
+ return <div className={'app '+(view==='operator'?'app-operator':'')}><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span><button className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='live-monitoring'?'nav-button is-active':'nav-button'} onClick={()=>setView('live-monitoring')}>Live Monitoring</button><button className={view==='planner'?'nav-button is-active':'nav-button'} onClick={()=>setView('planner')}>Production Planning</button><button className={view==='manage'?'nav-button is-active':'nav-button'} onClick={()=>setView('manage')}>Manage Production</button><button className={view==='reports'?'nav-button is-active':'nav-button'} onClick={()=>setView('reports')}>Reports</button><button className={view==='operator'?'nav-button is-active':'nav-button'} onClick={()=>setView('operator')}>Operator</button></div></header>
  {view==='dashboard'&&<main className='dashboard-page'>
  <section className='dashboard-hero'><div><span className='eyebrow'>PRODUCTION OVERVIEW</span><h2>Production at a glance</h2><p>Track today's production, see progress across active lines, and jump directly into live monitoring or production planning.</p></div><div className='dashboard-hero-actions'><button className='secondary-action' onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button><button className='primary' onClick={()=>setView('live-monitoring')}>View Live Monitoring ↗</button></div></section>
  {monitoringError&&<div className='notice dashboard-error'>{monitoringError}</div>}
