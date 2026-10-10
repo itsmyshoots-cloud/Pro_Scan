@@ -8,3 +8,13 @@
 .auth-shell{min-height:100vh}.auth-userbar{height:36px;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:0 20px;background:#0f172a;color:#fff;font-size:10px}.auth-userbar span{display:flex;align-items:center;gap:8px}.auth-userbar b{font-weight:700}.auth-userbar em{padding:3px 7px;border:1px solid rgba(255,255,255,.2);border-radius:999px;color:#cbd5e1;font-style:normal;text-transform:capitalize;font-size:9px}.auth-userbar button{border:0;background:transparent;color:#cbd5e1;font-size:10px;font-weight:800;cursor:pointer}.auth-userbar button:hover{color:#fff}
 .auth-role-operator .app:not(.app-operator){visibility:hidden}.auth-role-operator .app .top-actions .nav-button:not(:last-of-type){display:none}.auth-role-operator .app .top-actions .live{display:none}.auth-role-operator .app .top-actions{min-width:auto}
 @media(max-width:600px){.auth-page{padding:14px}.auth-card{padding:24px 18px;border-radius:18px}.auth-userbar{height:34px;padding:0 10px}.auth-userbar b{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+
+.pending-access-card{text-align:left}
+.pending-access-card .auth-heading{text-align:left}
+.pending-access-mark{display:grid;place-items:center;width:48px;height:48px;margin:24px 0 12px;border-radius:14px;background:#eff6ff;color:#2563eb;font-size:27px}
+.pending-access-email{padding:12px 14px;margin:14px 0;border:1px solid #dbe5ef;border-radius:10px;background:#f8fafc;color:#0f172a;font-size:13px;font-weight:850;overflow-wrap:anywhere}
+.pending-access-actions{display:flex;flex-direction:column;gap:9px;margin-top:16px}
+.pending-access-actions .auth-submit{width:100%;margin:0}
+.pending-access-actions .auth-mode-toggle{width:100%;margin:0;padding:10px;border:1px solid #dbe5ef;border-radius:10px;background:#fff;color:#475569}
+.auth-help{line-height:1.5}
