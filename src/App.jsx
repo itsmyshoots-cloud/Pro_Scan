@@ -42,6 +42,20 @@ function getPlanShiftWindow(plan){
  const first=values[0].split(':').map(Number);
  return {start:first[0]*60+first[1],end:parts[0]*60+parts[1]+60};
 }
+
+function minutesToClock(totalMinutes){const minute=((Number(totalMinutes)||0)%(24*60)+24*60)%(24*60);return String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');}
+function planShiftLabel(plan){const shift=getPlanShiftWindow(plan);return shift?formatClock12(minutesToClock(shift.start))+' – '+formatClock12(minutesToClock(shift.end)):'Shift not set';}
+function rebalanceHourlyTargets(targets,total){
+ const source=Array.isArray(targets)?targets:[],targetTotal=Math.max(0,Math.floor(Number(total)||0));
+ if(!source.length)return [];
+ const entered=source.map(row=>Math.max(0,Number(row.planned_qty)||0));let weights=entered,weightTotal=entered.reduce((sum,value)=>sum+value,0);
+ if(weightTotal<=0){weights=source.map(()=>1);weightTotal=weights.length;}
+ const quotas=weights.map(value=>targetTotal*value/weightTotal),allocated=quotas.map(Math.floor);
+ const remainder=targetTotal-allocated.reduce((sum,value)=>sum+value,0);
+ const order=quotas.map((value,index)=>({index,fraction:value-Math.floor(value)})).sort((a,b)=>b.fraction-a.fraction);
+ for(let i=0;i<remainder;i++)allocated[order[i%order.length].index]+=1;
+ return source.map((row,index)=>({...row,planned_qty:allocated[index]}));
+}
 function getLocalMinutes(date){return date.getHours()*60+date.getMinutes();}
 function csvCell(value){return '"'+String(value??'').replace(/"/g,'""')+'"';}
 function downloadCsv(filename,headers,rows){
@@ -91,9 +105,9 @@ export default function App({user}){
  const [usersNotice,setUsersNotice]=useState('');
  const [newUserEmail,setNewUserEmail]=useState('');
  const [newUserRole,setNewUserRole]=useState('operator');
- const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
+ const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>createHourlyTargets()); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
+ const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -107,28 +121,29 @@ export default function App({user}){
   return {data:rows,error:null};
  };
 
- const checkDatabaseForConflicts=async(parsedRows)=>{
-  const [allocatedResult,registryResult]=await Promise.all([
-   fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').order('id',{ascending:true}).range(from,to)),
-   fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to))
-  ]);
-  if(allocatedResult.error)throw new Error('Could not check existing production serial batches: '+allocatedResult.error.message);
-  if(registryResult.error)throw new Error('Could not check the serial registry: '+registryResult.error.message);
-  const serialAllocations=new Map(),labelAllocations=new Map(),registeredSerials=new Set();
-  for(const row of allocatedResult.data||[]){
-   if(row.serial_number){if(!serialAllocations.has(row.serial_number))serialAllocations.set(row.serial_number,row); }
-   if(row.label_number){if(!labelAllocations.has(row.label_number))labelAllocations.set(row.label_number,row);}
-  }
-  for(const row of registryResult.data||[]){if(row.serial_number)registeredSerials.add(row.serial_number);}
-  const conflicts=[];
-  for(const row of parsedRows){
-   const reasons=[],existingSerial=serialAllocations.get(row.serial_number),existingLabel=labelAllocations.get(row.label_number);
-   if(existingSerial)reasons.push('Serial '+row.serial_number+' is already allocated in a production plan');
-   if(registeredSerials.has(row.serial_number))reasons.push('Serial '+row.serial_number+' already exists in the serial registry');
-   if(existingLabel)reasons.push('Label '+row.label_number+' is already allocated in a production plan');
-   if(reasons.length)conflicts.push({label_number:row.label_number,serial_number:row.serial_number,reasons:[...new Set(reasons)],existing_plan_id:existingSerial?.plan_id||existingLabel?.plan_id||''});
-  }
-  return conflicts;
+ const checkDatabaseForConflicts=async(parsedRows,excludePlanId='')=>{
+ const [allocatedResult,registryResult]=await Promise.all([
+  fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').order('id',{ascending:true}).range(from,to)),
+  fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to))
+ ]);
+ if(allocatedResult.error)throw new Error('Could not check existing production serial batches: '+allocatedResult.error.message);
+ if(registryResult.error)throw new Error('Could not check the serial registry: '+registryResult.error.message);
+ const serialAllocations=new Map(),labelAllocations=new Map(),registeredSerials=new Set(),ownSerials=new Set();
+ for(const row of allocatedResult.data||[]){
+  if(excludePlanId&&row.plan_id===excludePlanId){if(row.serial_number)ownSerials.add(row.serial_number);continue;}
+  if(row.serial_number&&!serialAllocations.has(row.serial_number))serialAllocations.set(row.serial_number,row);
+  if(row.label_number&&!labelAllocations.has(row.label_number))labelAllocations.set(row.label_number,row);
+ }
+ for(const row of registryResult.data||[])if(row.serial_number)registeredSerials.add(row.serial_number);
+ const conflicts=[];
+ for(const row of parsedRows){
+  const reasons=[],existingSerial=serialAllocations.get(row.serial_number),existingLabel=labelAllocations.get(row.label_number);
+  if(existingSerial)reasons.push('Serial '+row.serial_number+' is already allocated in a different production plan');
+  if(registeredSerials.has(row.serial_number)&&!ownSerials.has(row.serial_number))reasons.push('Serial '+row.serial_number+' already exists in the serial registry');
+  if(existingLabel)reasons.push('Label '+row.label_number+' is already allocated in a different production plan');
+  if(reasons.length)conflicts.push({label_number:row.label_number,serial_number:row.serial_number,reasons:[...new Set(reasons)],existing_plan_id:existingSerial?.plan_id||existingLabel?.plan_id||''});
+ }
+ return conflicts;
  };
  const syncPlanStatuses=async(serialRows=monitoringSerials,operatorPlanId=(view==='operator'?selectedPlan?.id:null))=>{
   const currentTime=new Date(),today=localDateKey(currentTime),minutes=getLocalMinutes(currentTime);
@@ -196,6 +211,27 @@ export default function App({user}){
   setStatusUpdatingId('');
   await refreshMonitoring();
  };
+
+ const startNewPlan=()=>{
+  setEditingPlanId('');setForm({production_date:localDateKey(new Date()),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 1',planned_qty:500});
+  setShiftStart('09:00');setShiftEnd('18:00');setHourlyTargets(rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500));
+  setRows([]);setSourceFile('');setFileInfo('');setImportConflicts([]);setMessage('');setView('planner');
+ };
+ const startEditPlan=async plan=>{
+  if(!plan||plan.status!=='draft'){setMessage('Only Draft production plans can be edited.');return;}
+  setBusy(true);setMessage('Loading draft plan and allocated serials…');
+  const result=await fetchAllRows((from,to)=>supabase.from('plan_serials').select('id,plan_id,label_number,serial_number,sequence_no,status,scanned_at').eq('plan_id',plan.id).order('sequence_no',{ascending:true}).range(from,to));
+  if(result.error){setBusy(false);setMessage('Could not load draft serial allocation: '+result.error.message);return;}
+  const allocated=result.data||[];
+  if(allocated.some(row=>row.status==='scanned')){setBusy(false);setMessage('This draft already contains scanned serials and cannot be edited safely.');return;}
+  const shift=getPlanShiftWindow(plan),startValue=shift?minutesToClock(shift.start):'09:00',endValue=shift?minutesToClock(shift.end):'18:00';
+  const schedule=createHourlyTargets(startValue,endValue,Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]),qty=Number(plan.planned_qty||0);
+  setEditingPlanId(plan.id);setForm({production_date:plan.production_date||localDateKey(new Date()),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',production_line:plan.production_line||lines[0],planned_qty:qty});
+  setShiftStart(startValue);setShiftEnd(endValue);setHourlyTargets(rebalanceHourlyTargets(schedule,qty));
+  setRows(allocated.map(row=>({label_number:row.label_number,serial_number:row.serial_number})));
+  setSourceFile(allocated.length?'Existing Draft Plan Allocation':'');setFileInfo(allocated.length?allocated.length.toLocaleString()+' allocated serials loaded':'No serial allocation found — upload a supplier file');
+  setImportConflicts([]);setMessage('');setBusy(false);setView('planner');
+ };
  const refreshPlanMetrics=async(plan=selectedPlan)=>{
   if(!plan){setPlanSerials([]);setDuplicateScans([]);return;}
   const [serialResult,duplicateResult]=await Promise.all([
@@ -223,11 +259,9 @@ export default function App({user}){
   return()=>clearInterval(timer);
  },[view,selectedPlan?.id,plans.map(plan=>plan.id+':'+plan.status).join('|')]);
  const activePlans=useMemo(()=>plans.filter(p=>p.status==='active'),[plans]);
- const operatorEligiblePlans=useMemo(()=>plans.filter(p=>p.status==='active'||p.status==='draft'),[plans]);
- const operatorLines=useMemo(()=>[...new Set(operatorEligiblePlans.map(p=>p.production_line).filter(Boolean))].sort(),[operatorEligiblePlans]);
- const operatorBrands=useMemo(()=>[...new Set(operatorEligiblePlans.filter(p=>!operatorFilters.production_line||p.production_line===operatorFilters.production_line).map(p=>p.brand).filter(Boolean))].sort(),[operatorEligiblePlans,operatorFilters.production_line]);
- const operatorProducts=useMemo(()=>[...new Set(operatorEligiblePlans.filter(p=>(!operatorFilters.production_line||p.production_line===operatorFilters.production_line)&&(!operatorFilters.brand||p.brand===operatorFilters.brand)).map(p=>p.product_name).filter(Boolean))].sort(),[operatorEligiblePlans,operatorFilters.production_line,operatorFilters.brand]);
- const matchingOperatorPlans=useMemo(()=>operatorEligiblePlans.filter(p=>(!operatorFilters.production_line||p.production_line===operatorFilters.production_line)&&(!operatorFilters.brand||p.brand===operatorFilters.brand)&&(!operatorFilters.product_name||p.product_name===operatorFilters.product_name)),[operatorEligiblePlans,operatorFilters.production_line,operatorFilters.brand,operatorFilters.product_name]);
+ const todayKey=localDateKey(now);
+ const dashboardPlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&(p.status==='active'||p.production_date>=todayKey)).sort((a,b)=>(b.production_date||'').localeCompare(a.production_date||'')||(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)),[plans,todayKey]);
+ const operatorEligiblePlans=useMemo(()=>plans.filter(p=>p.status==='active'||p.status==='draft').sort((a,b)=>(b.production_date||'').localeCompare(a.production_date||'')||(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)),[plans]);
  const pendingSerials=useMemo(()=>planSerials.filter(s=>s.status!=='scanned'),[planSerials]);
  const scannedSerials=useMemo(()=>planSerials.filter(s=>s.status==='scanned'),[planSerials]);
  const uniqueDuplicateSerials=useMemo(()=>[...new Map(duplicateScans.map(e=>[e.serial_number,e])).values()],[duplicateScans]);
@@ -263,7 +297,7 @@ export default function App({user}){
   (reportFilters.month==='all'||(plan.production_date||'').slice(0,7)===reportFilters.month)&&
   (!reportFilters.search||[plan.product_name,plan.brand,plan.model,plan.production_line,plan.id].join(' ').toLowerCase().includes(reportFilters.search.trim().toLowerCase()))
  ),[plans,reportFilters]);
- const dashboardHourlyPlan=useMemo(()=>activePlans.find(plan=>plan.id===dashboardHourlyPlanId)||activePlans[0]||null,[activePlans,dashboardHourlyPlanId]);
+ const dashboardHourlyPlan=useMemo(()=>dashboardPlans.find(plan=>plan.id===dashboardHourlyPlanId)||dashboardPlans[0]||null,[dashboardPlans,dashboardHourlyPlanId]);
  const activeHourlySummary=useMemo(()=>{
   if(!dashboardHourlyPlan)return [];
   const buckets=new Map();
@@ -423,14 +457,15 @@ export default function App({user}){
    else parsed=pairsFromText(await f.text());
    validatePairs(parsed);setRows(parsed);setSourceFile(f.name);setFileInfo(pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file');
    setMessage('Checking '+parsed.length.toLocaleString()+' serial-label pairs against existing production data…');
-   const conflicts=await checkDatabaseForConflicts(parsed);
-   setImportConflicts(conflicts);
-   if(conflicts.length){
-    setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database. Review the conflicts below before uploading a new batch.');
-   }else{
-    setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
+   const conflicts=await checkDatabaseForConflicts(parsed,editingPlanId||'');setImportConflicts(conflicts);
+   if(conflicts.length)setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');
+   else{
+    const currentQty=Number(form.planned_qty||0);
+    if(currentQty>parsed.length){
+     setForm(previous=>({...previous,planned_qty:parsed.length}));setHourlyTargets(previous=>rebalanceHourlyTargets(previous,parsed.length));
+     setMessage('Planned quantity adjusted to '+parsed.length.toLocaleString()+' to match the available serials. Hourly targets were rebalanced; review them before saving.');
+    }else setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
    }
-   if(!conflicts.length&&Number(form.planned_qty)>parsed.length)setMessage(parsed.length.toLocaleString()+' pairs loaded, but planned quantity exceeds the available serial count.');
   }catch(error){setRows([]);setImportConflicts([]);setMessage(error?.message||'Could not read or validate the supplier file.');}
   finally{setBusy(false);input.value='';}
  };
@@ -441,24 +476,36 @@ export default function App({user}){
   if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
   if(hourlyTargetTotal!==qty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal total planned quantity ('+qty.toLocaleString()+').');
   if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
-  if(qty>rows.length)return setMessage('Planned quantity ('+qty.toLocaleString()+') exceeds available serials ('+rows.length.toLocaleString()+').');
+  if(qty>rows.length)return setMessage('Planned quantity ('+qty.toLocaleString()+') exceeds available serials ('+rows.length.toLocaleString()+'). Upload a serial file with at least '+qty.toLocaleString()+' unique pairs.');
   if(importConflicts.length)return setMessage('Plan creation blocked: '+importConflicts.length.toLocaleString()+' serial/label pairs in this upload already exist in the database.');
-  const chosen=rows.slice(0,qty);
+  const chosen=rows.slice(0,qty).map(row=>({label_number:row.label_number,serial_number:row.serial_number}));
   try{validatePairs(chosen);}catch(error){return setMessage(error.message);}
-  setBusy(true);setMessage('Rechecking uploaded batch against the database…');
-  try{
-   const conflicts=await checkDatabaseForConflicts(rows);
-   setImportConflicts(conflicts);
-   if(conflicts.length){setBusy(false);return setMessage('Plan creation blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');}
-  }catch(error){setBusy(false);return setMessage(error?.message||'Could not validate serial uniqueness. No production plan was created.');}
-  setMessage('Creating plan and allocating '+qty.toLocaleString()+' serials…');
+  setBusy(true);setMessage('Rechecking uploaded batch against existing production data…');
+  try{const conflicts=await checkDatabaseForConflicts(chosen,editingPlanId||'');setImportConflicts(conflicts);if(conflicts.length){setBusy(false);return setMessage('Plan save blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist elsewhere in the database.');}}
+  catch(error){setBusy(false);return setMessage(error?.message||'Could not validate serial uniqueness. No production plan was saved.');}
   const hourlyPayload=hourlyTargets.map(row=>({hour:row.hour,planned_qty:Number(row.planned_qty||0)}));
+  if(editingPlanId){
+   const planId=editingPlanId,original=plans.find(plan=>plan.id===planId);
+   if(!original||original.status!=='draft'){setBusy(false);return setMessage('Only Draft production plans can be edited. Refresh the plans and try again.');}
+   setMessage('Saving draft plan and updating serial allocations…');
+   const {data,error}=await supabase.rpc('update_draft_production_plan',{
+    p_plan_id:planId,p_production_date:form.production_date,p_brand:form.brand.trim()||'Unspecified',
+    p_product_name:form.product_name.trim(),p_model:form.model.trim(),p_production_line:form.production_line,
+    p_planned_qty:qty,p_hourly_targets:hourlyPayload,p_serial_pairs:chosen
+   });
+   if(error){setBusy(false);return setMessage('Could not update draft plan: '+error.message);}
+   const savedPlan=Array.isArray(data)?data[0]:data;if(!savedPlan?.id){setBusy(false);return setMessage('The update response was unexpected. Refresh Manage Production to verify the saved plan.');}
+   setPlans(previous=>previous.map(plan=>plan.id===planId?savedPlan:plan));setSelectedPlan(previous=>previous?.id===planId?savedPlan:previous);
+   setEditingPlanId('');setRows([]);setSourceFile('');setFileInfo('');setBusy(false);setMessage('Draft production plan updated successfully. '+qty.toLocaleString()+' serials are allocated to the revised shift.');
+   setView('manage');void load();void refreshMonitoring();return;
+  }
+  setMessage('Creating plan and allocating '+qty.toLocaleString()+' serials…');
   const {data:plan,error:planError}=await supabase.from('production_plans').insert({...form,brand:form.brand.trim()||'Unspecified',planned_qty:qty,hourly_targets:hourlyPayload,status:'draft'}).select().single();
   if(planError){setBusy(false);return setMessage('Could not create plan: '+planError.message);}
-  const payload=chosen.map((r,i)=>({...r,plan_id:plan.id,sequence_no:i+1}));
+  const payload=chosen.map((row,index)=>({...row,plan_id:plan.id,sequence_no:index+1}));
   const {error:serialError}=await supabase.from('plan_serials').insert(payload);
   if(serialError){setBusy(false);await load();return setMessage('Plan saved as draft, but serial allocation failed: '+serialError.message+'. No active plan was published.');}
-  await load();setSelectedPlan(plan);setBusy(false);setMessage('Production plan created as Draft with '+payload.length.toLocaleString()+' allocated serials. Select it in Operator during its scheduled shift to begin production.');setView('plans');
+  await load();setSelectedPlan(plan);setEditingPlanId('');setBusy(false);setMessage('Production plan created as Draft with '+payload.length.toLocaleString()+' allocated serials. Select the exact plan and shift in Operator during its scheduled hours.');setView('plans');
  };
  const scan=async value=>{
   if(scanInFlightRef.current||!selectedPlan||!value)return;
@@ -620,7 +667,7 @@ export default function App({user}){
 
  return <div className={'app '+(view==='operator'?'app-operator':'')}><header><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div><div className='top-actions'><span className='live'>● LIVE</span>{!isOperatorUser&&<><button className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='manage'?'nav-button is-active':'nav-button'} onClick={()=>setView('manage')}>Manage Production</button><button className={view==='reports'?'nav-button is-active':'nav-button'} onClick={()=>setView('reports')}>Reports</button>{isSuperAdmin&&<button className={view==='users'?'nav-button is-active':'nav-button'} onClick={()=>setView('users')}>User Roles</button>}</>}<button className={view==='operator'?'nav-button is-active':'nav-button'} onClick={()=>setView('operator')}>Operator</button></div></header>
  {view==='dashboard'&&<main className='dashboard-page'>
- <section className='dashboard-hero'><div><span className='eyebrow'>PRODUCTION OVERVIEW</span><h2>Production at a glance</h2><p>Track today's production, see progress across active lines, and jump directly into live monitoring or production planning.</p></div><div className='dashboard-hero-actions'><button className='secondary-action' onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button><button className='secondary-action' onClick={()=>setView('planner')}>＋ Production Planning</button><button className='primary' onClick={()=>setView('live-monitoring')}>View Live Monitoring ↗</button></div></section>
+ <section className='dashboard-hero'><div><span className='eyebrow'>PRODUCTION OVERVIEW</span><h2>Production at a glance</h2><p>Track today's production, see progress across active lines, and jump directly into live monitoring or production planning.</p></div><div className='dashboard-hero-actions'><button className='secondary-action' onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button><button className='secondary-action' onClick={startNewPlan}>＋ Production Planning</button><button className='primary' onClick={()=>setView('live-monitoring')}>View Live Monitoring ↗</button></div></section>
  {monitoringError&&<div className='notice dashboard-error'>{monitoringError}</div>}
  <div className='dashboard-kpis'>
   <div className='dashboard-kpi'><span className='kpi-label'>Active production plans <small>(count)</small></span><div className='kpi-value'>{activePlans.length.toLocaleString()}<span className='kpi-icon kpi-blue'>▦</span></div><small>Plans currently in production</small></div>
@@ -628,10 +675,21 @@ export default function App({user}){
   <div className='dashboard-kpi'><span className='kpi-label'>Actual scanned <small>(all active plans)</small></span><div className='kpi-value'>{activeScannedQty.toLocaleString()}<span className='kpi-icon kpi-green'>✓</span></div><small>{activePlannedQty?Math.round(activeScannedQty/activePlannedQty*100):0}% of planned units complete</small></div>
   <div className='dashboard-kpi'><span className='kpi-label'>Pending units <small>(all active plans)</small></span><div className='kpi-value'>{activePendingQty.toLocaleString()}<span className='kpi-icon kpi-amber'>◷</span></div><small><span className='inline-alert'>{duplicateEventCount.toLocaleString()} duplicate scan events</span></small></div>
  </div>
- <section className='panel dashboard-section dashboard-active-plans-wide'><div className='panel-head'><div><span className='eyebrow'>PLAN-WISE PROGRESS</span><h3>Active production plans</h3><p>Each row shows quantities for that specific plan, separate from the combined totals above.</p></div><button onClick={()=>setView('manage')}>Manage all plans →</button></div>
-  {activePlans.length?<div className='dashboard-plan-list'>{activePlans.map(plan=>{const planRows=monitoringSerials.filter(row=>row.plan_id===plan.id);const scanned=planRows.filter(row=>row.status==='scanned').length;const planned=Number(plan.planned_qty||0);const pending=Math.max(0,planned-scanned);const pct=planned?Math.min(100,Math.round(scanned/planned*100)):0;return <div className='dashboard-plan-row' key={plan.id}><div className='plan-avatar'>{(plan.production_line||'P').replace(/[^0-9A-Za-z]/g,'').slice(-2)||'P'}</div><div className='dashboard-plan-main'><div className='dashboard-plan-title'><b>{plan.product_name}</b><span className='badge'>ACTIVE</span></div><span>{plan.brand||'—'} · {plan.model} · {plan.production_line} · {plan.production_date}</span><div className='mini-progress'><div style={{width:pct+'%'}}/></div><div className='plan-wise-quantities'><span>Planned <b>{planned.toLocaleString()}</b></span><span>Scanned <b>{scanned.toLocaleString()}</b></span><span>Pending <b>{pending.toLocaleString()}</b></span><strong>{pct}%</strong></div></div><button className='icon-action' title='Open operator scanner for this plan' onClick={()=>{setSelectedPlan(plan);setOperatorFilters({production_line:plan.production_line||'',brand:plan.brand||'',product_name:plan.product_name||''});setView('operator')}}>↗</button></div>})}</div>:<div className='empty'>No active production plans. Plans become active after they are selected in Operator during scheduled shift hours.</div>}
- </section>
- <section className='panel dashboard-hourly-panel'><div className='panel-head'><div><span className='eyebrow'>PLAN-WISE HOURLY OUTPUT</span><h3>Hourly planned vs actual</h3><p>The graph shows one production plan at a time, so each hourly target is compared only with scans belonging to that plan.</p></div><button onClick={()=>setView('live-monitoring')}>Open Live Monitoring →</button></div><div className='dashboard-hourly-plan-select'><label>Select active production plan<select value={dashboardHourlyPlan?.id||''} onChange={e=>setDashboardHourlyPlanId(e.target.value)}>{activePlans.map(plan=><option value={plan.id} key={plan.id}>{plan.production_date} · {plan.brand||'—'} · {plan.product_name} · {plan.model} · {plan.production_line}</option>)}</select></label>{dashboardHourlyPlan&&<div><b>{dashboardHourlyPlan.product_name}</b><span>{dashboardHourlyPlan.brand||'—'} · {dashboardHourlyPlan.model} · {dashboardHourlyPlan.production_line} · {dashboardHourlyPlan.production_date}</span><small>Plan target: {Number(dashboardHourlyPlan.planned_qty||0).toLocaleString()} units</small></div>}</div>
+ <section className='panel dashboard-section dashboard-active-plans-wide'>
+ <div className='panel-head'><div><span className='eyebrow'>PLAN-WISE PROGRESS</span><h3>Today's & upcoming production plans</h3><p>See each shift independently, including later shifts that are still in Draft.</p></div><button onClick={()=>setView('manage')}>Manage all plans →</button></div>
+ {dashboardPlans.length?<div className='dashboard-plan-list'>{dashboardPlans.map(plan=>{
+  const planRows=monitoringSerials.filter(row=>row.plan_id===plan.id),scanned=planRows.filter(row=>row.status==='scanned').length;
+  const planned=Number(plan.planned_qty||0),pending=Math.max(0,planned-scanned),pct=planned?Math.min(100,Math.round(scanned/planned*100)):0;
+  return <div className='dashboard-plan-row' key={plan.id}><div className='plan-avatar'>{(plan.production_line||'P').replace(/[^0-9A-Za-z]/g,'').slice(-2)||'P'}</div>
+   <div className='dashboard-plan-main'><div className='dashboard-plan-title'><b>{plan.product_name}</b><span className={plan.status==='active'?'badge':'plan-status-badge status-draft'}>{plan.status==='active'?'ACTIVE':'DRAFT'}</span></div>
+    <span className='dashboard-plan-meta'>{plan.brand||'—'} · {plan.model} · {plan.production_line} · {plan.production_date} · Plan #{plan.id.slice(0,8)}</span>
+    <span className='dashboard-plan-shift'>Shift {planShiftLabel(plan)} · Target {planned.toLocaleString()} units</span>
+    <div className='mini-progress'><div style={{width:pct+'%'}}/></div>
+    <div className='plan-wise-quantities'><span>Planned <b>{planned.toLocaleString()}</b></span><span>Scanned <b>{scanned.toLocaleString()}</b></span><span>Pending <b>{pending.toLocaleString()}</b></span><strong>{pct}%</strong></div>
+   </div></div>;
+ })}</div>:<div className='empty'>No active or upcoming production plans. Create a plan to see its shift, target and progress here.</div>}
+</section>
+<section className='panel dashboard-hourly-panel'><div className='panel-head'><div><span className='eyebrow'>PLAN-WISE HOURLY OUTPUT</span><h3>Hourly planned vs actual</h3><p>The graph shows one production plan at a time, so each hourly target is compared only with scans belonging to that plan.</p></div><button onClick={()=>setView('live-monitoring')}>Open Live Monitoring →</button></div><div className='dashboard-hourly-plan-select'><label>Select production plan<select value={dashboardHourlyPlan?.id||''} onChange={e=>setDashboardHourlyPlanId(e.target.value)}>{dashboardPlans.map(plan=><option value={plan.id} key={plan.id}>{plan.production_date} · {plan.production_line} · {planShiftLabel(plan)} · {plan.brand||'—'} · {plan.product_name} · {plan.model} · {Number(plan.planned_qty||0).toLocaleString()} units · {plan.status}</option>)}</select></label>{dashboardHourlyPlan&&<div><b>{dashboardHourlyPlan.product_name}</b><span>{dashboardHourlyPlan.brand||'—'} · {dashboardHourlyPlan.model} · {dashboardHourlyPlan.production_line} · {dashboardHourlyPlan.production_date}</span><small>Plan target: {Number(dashboardHourlyPlan.planned_qty||0).toLocaleString()} units</small></div>}</div>
   <div className='dashboard-hourly-legend'><span><i className='legend-planned'/> Planned</span><span><i className='legend-actual'/> Actual scanned</span><small>{monitoringUpdatedAt?'Updated '+monitoringUpdatedAt.toLocaleTimeString('en-IN'):'Loading production data…'}</small></div>
   {activeHourlySummary.length?<div className='active-hourly-chart-scroll'><div className='active-hourly-chart' style={{minWidth:Math.max(620,activeHourlySummary.length*58)+'px'}}>{activeHourlySummary.map(row=><div className='active-hourly-column' key={row.hour} title={row.hour+' · target '+row.planned_qty+' · actual '+row.actual_qty}><div className='active-hourly-values'><span>{row.planned_qty||'·'}</span><span>{row.actual_qty||'·'}</span></div><div className='active-hourly-bars'><div className='hourly-bar planned-hour-bar' style={{height:(row.planned_qty?Math.max(3,row.planned_qty/activeHourlyMax*100):0)+'%'}}/><div className='hourly-bar actual-hour-bar' style={{height:(row.actual_qty?Math.max(3,row.actual_qty/activeHourlyMax*100):0)+'%'}}/></div><b>{formatClock12(row.hour)}</b></div>)}</div></div>:<div className='empty'>No hourly output yet. Hourly targets will appear here once active plans include hourly targets; actual scans are added by scan time.</div>}
  </section>
@@ -668,18 +726,18 @@ export default function App({user}){
  <div className='dashboard-footer'><span><i className='live-dot'/> Live values refresh automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleString('en-IN'):'Loading…'}</span><button onClick={()=>setView('manage')}>Manage production plans →</button></div>
 </main>}
  {view==='planner'&&<main><section className='panel planner-panel'>
- <div className='panel-head'><div><span className='eyebrow'>ADMIN / PLANNER</span><h2>Create daily production plan</h2><p className='planner-subtitle'>Set production targets by hour, then allocate a supplier serial batch. Existing serials and labels are checked before the plan can be created.</p></div><button onClick={()=>setView('dashboard')}>Back</button></div>
+ <div className='panel-head'><div><span className='eyebrow'>{editingPlanId?'EDIT DRAFT PLAN':'PRODUCTION PLANNING'}</span><h2>{editingPlanId?'Edit draft production plan':'Create daily production plan'}</h2><p className='planner-subtitle'>Set the production shift and hourly targets, then allocate a matching supplier serial batch. Only Draft plans can be edited.</p></div><button onClick={()=>{setEditingPlanId('');setView(editingPlanId?'manage':'dashboard');setMessage('');}}>Back</button></div>
  <div className='grid'>
   <label>Production date<input type='date' value={form.production_date} onChange={e=>setForm({...form,production_date:e.target.value})}/></label>
   <label>Brand<input value={form.brand} onChange={e=>setForm({...form,brand:e.target.value})} placeholder='e.g. LifeLong'/></label>
   <label>Product<input value={form.product_name} onChange={e=>setForm({...form,product_name:e.target.value})} placeholder='e.g. LifeLong OTG'/></label>
   <label>Model<input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder='e.g. RCAD60'/></label>
   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(x=><option key={x}>{x}</option>)}</select></label>
-  <label>Total planned quantity<input type='number' min='1' value={form.planned_qty} onChange={e=>setForm({...form,planned_qty:e.target.value})}/></label>
+  <label>Total planned quantity<input type='number' min='1' value={form.planned_qty} onChange={e=>{const value=e.target.value;setForm({...form,planned_qty:value});if(value!=='')setHourlyTargets(previous=>rebalanceHourlyTargets(previous,Number(value)));}}/></label>
  </div>
  <section className='hourly-target-editor'>
   <div className='hourly-editor-head'><div><span className='eyebrow'>HOURLY PRODUCTION TARGET</span><h3>Plan output for every hour</h3><p>Enter the number of units you expect to complete in each hour of the shift. The targets must add up to the total planned quantity.</p></div>
-   <div className='shift-time-fields'><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>createHourlyTargets(next,shiftEnd,previous));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>createHourlyTargets(shiftStart,next,previous));}}/></label></div>
+   <div className='shift-time-fields'><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>rebalanceHourlyTargets(createHourlyTargets(next,shiftEnd,previous),Number(form.planned_qty||0)));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>rebalanceHourlyTargets(createHourlyTargets(shiftStart,next,previous),Number(form.planned_qty||0)));}}/></label></div>
   </div>
   {hourlyTargets.length?<div className='hourly-target-grid'>{hourlyTargets.map((row,index)=><label className='hour-target-field' key={row.hour}><span>{getHourlySlotLabel(row.hour)}</span><small>Planned units</small><input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/></label>)}</div>:<div className='notice'>Choose a start and end time with complete 60-minute slots. For example, 09:30 AM to 05:30 PM.</div>}
   <div className='hourly-target-summary'><div><span>Hourly target total</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'target-match':'target-mismatch'}>{hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'✓ Totals match':'Adjust hourly targets to match total planned quantity'}</span></div>
@@ -689,13 +747,13 @@ export default function App({user}){
   {rows.length>0&&importConflicts.length===0&&<div className='database-clear'><strong>✓ No duplicates found</strong><span>Both serial numbers and label numbers were checked against the database.</span></div>}
  </div>
  {rows.length>0&&<section className='preview-panel'><div className='panel-head'><div><h3>Serial allocation preview</h3><p className='muted'>First 4 and last 4 pairs from the source file.</p></div><span className='badge'>{rows.length.toLocaleString()} unique pairs</span></div><div className='table-scroll'><table><thead><tr><th>Label number</th><th>Serial number</th><th>Allocation</th></tr></thead><tbody>{(rows.length<=8?rows:[...rows.slice(0,4),...rows.slice(-4)]).map((r,i)=><tr key={r.label_number+'-'+i}><td>{r.label_number}</td><td>{r.serial_number}</td><td>{rows.indexOf(r)<Number(form.planned_qty)?'Included':'Not allocated'}</td></tr>)}</tbody></table></div></section>}
- <div className='actions'><button className='primary' disabled={busy||!rows.length||importConflicts.length>0} onClick={createPlan}>{busy?'Checking / creating…':'Create Production Plan'}</button></div>{message&&<div className='notice'>{message}</div>}
+ <div className='actions'><button className='primary' disabled={busy||!rows.length||importConflicts.length>0} onClick={createPlan}>{busy?(editingPlanId?'Saving draft…':'Checking / creating…'):(editingPlanId?'Save Draft Changes':'Create Production Plan')}</button></div>{message&&<div className='notice'>{message}</div>}
 </section></main>}
 {view==='manage'&&<main className='manage-production-page'>
- <section className='management-title-bar'><div><span className='eyebrow'>PRODUCTION PLANS</span><h2>Manage production</h2><p>Review progress and plan status. Completed quantity updates status automatically.</p></div><button className='primary' onClick={()=>setView('planner')}>＋ New production plan</button></section>
+ <section className='management-title-bar'><div><span className='eyebrow'>PRODUCTION PLANS</span><h2>Manage production</h2><p>Review progress and plan status. Completed quantity updates status automatically.</p></div><button className='primary' onClick={startNewPlan}>＋ New production plan</button></section>
  {message&&<div className='notice management-message'>{message}</div>}
  <div className='management-filter-bar'><div><b>{filteredPlans.length}</b><span>plan(s) shown</span></div><label>Filter by status<select value={planStatusFilter} onChange={e=>setPlanStatusFilter(e.target.value)}><option value='all'>All statuses</option><option value='active'>Active</option><option value='draft'>Draft</option><option value='completed'>Completed</option><option value='cancelled'>Cancelled</option></select></label><button onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button></div>
- <section className='panel management-table-panel'>{filteredPlans.length?<div className='management-table-wrap'><table className='management-table'><thead><tr><th>Date</th><th>Product / Model</th><th>Line</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredPlans.map(plan=>{const serials=monitoringSerials.filter(row=>row.plan_id===plan.id);const scanned=serials.filter(row=>row.status==='scanned').length;const target=Number(plan.planned_qty||0);const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}><td>{plan.production_date}</td><td><div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · {target.toLocaleString()} units</small></td><td>{plan.production_line}</td><td><div className='manage-progress'><div className='progress-track'><div className='progress-fill' style={{width:Math.min(100,pct)+'%'}}/></div><span>{scanned.toLocaleString()} / {target.toLocaleString()} ({pct}%)</span></div></td><td><span className={'plan-status-badge status-'+plan.status}>{plan.status}</span></td><td><div className='table-actions'><button onClick={()=>setView('live-monitoring')}>Monitor</button><button onClick={()=>{setSelectedPlan(plan);setOperatorFilters({production_line:plan.production_line||'',brand:plan.brand||'',product_name:plan.product_name||''});setView('operator')}}>Operator</button>{(plan.status==='draft'||plan.status==='active')&&<button disabled={statusUpdatingId===plan.id} onClick={()=>void updatePlanStatus(plan.id,'cancelled')}>Cancel</button>}</div></td></tr>})}</tbody></table></div>:<div className='empty'>No production plans match this filter.</div>}</section>
+ <section className='panel management-table-panel'>{filteredPlans.length?<div className='management-table-wrap'><table className='management-table'><thead><tr><th>Date</th><th>Product / Model</th><th>Line</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredPlans.map(plan=>{const serials=monitoringSerials.filter(row=>row.plan_id===plan.id);const scanned=serials.filter(row=>row.status==='scanned').length;const target=Number(plan.planned_qty||0);const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}><td>{plan.production_date}</td><td><div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · {target.toLocaleString()} units</small></td><td>{plan.production_line}</td><td><div className='manage-progress'><div className='progress-track'><div className='progress-fill' style={{width:Math.min(100,pct)+'%'}}/></div><span>{scanned.toLocaleString()} / {target.toLocaleString()} ({pct}%)</span></div></td><td><span className={'plan-status-badge status-'+plan.status}>{plan.status}</span></td><td><div className='table-actions'><button onClick={()=>setView('live-monitoring')}>Monitor</button>{plan.status==='draft'&&<button disabled={busy} onClick={()=>void startEditPlan(plan)}>Edit draft</button>}<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>{(plan.status==='draft'||plan.status==='active')&&<button disabled={statusUpdatingId===plan.id} onClick={()=>void updatePlanStatus(plan.id,'cancelled')}>Cancel</button>}</div></td></tr>})}</tbody></table></div>:<div className='empty'>No production plans match this filter.</div>}</section>
  <div className='management-footnote'><span>Plan status changes apply to operator selection and live monitoring.</span><span>Last refreshed: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN'):'Loading…'}</span></div>
 </main>}
  {view==='reports'&&<main className='reports-page'>
@@ -753,13 +811,14 @@ export default function App({user}){
  </main>}
  {view==='operator'&&<main><section className='operator-card'>
  <div className='operator-clock'><div><span className='eyebrow'>CURRENT DATE & TIME</span><strong>{now.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</strong></div><b>{now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})}</b></div>
- <div className='operator-top'><div><span className='eyebrow'>OPERATOR SCAN</span><h2>{selectedPlan?.product_name||'Select your production assignment'}</h2><p>{selectedPlan?(selectedPlan.brand||'—')+' · '+selectedPlan.model+' · '+selectedPlan.production_line:'Choose a line, brand and product to load the matching active plan.'}</p></div></div>
- <div className='operator-filter-grid'>
-  <label>Production line<select value={operatorFilters.production_line} onChange={e=>{setOperatorFilters({production_line:e.target.value,brand:'',product_name:''});setSelectedPlan(null);setDetailsPanel('')}}><option value=''>Choose production line</option>{operatorLines.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
-  <label>Brand<select value={operatorFilters.brand} disabled={!operatorFilters.production_line} onChange={e=>{setOperatorFilters({...operatorFilters,brand:e.target.value,product_name:''});setSelectedPlan(null);setDetailsPanel('')}}><option value=''>Choose brand</option>{operatorBrands.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
-  <label>Product<select value={operatorFilters.product_name} disabled={!operatorFilters.brand} onChange={e=>{const next={...operatorFilters,product_name:e.target.value};setOperatorFilters(next);const matches=operatorEligiblePlans.filter(p=>p.production_line===next.production_line&&p.brand===next.brand&&p.product_name===next.product_name);setSelectedPlan(matches[0]||null);setDetailsPanel('')}}><option value=''>Choose product</option>{operatorProducts.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+ <div className='operator-top'><div><span className='eyebrow'>OPERATOR SCAN</span><h2>{selectedPlan?.product_name||'Select a production plan and shift'}</h2><p>{selectedPlan?(selectedPlan.brand||'—')+' · '+selectedPlan.model+' · '+selectedPlan.production_line:'Choose the exact production plan and shift you are working on.'}</p></div></div>
+ <div className='operator-plan-picker'>
+  <label>Production plan<select value={selectedPlan?.id||''} onChange={e=>{const plan=operatorEligiblePlans.find(item=>item.id===e.target.value)||null;setSelectedPlan(plan);setDetailsPanel('');setDuplicateWarning(null);setMessage('');if(plan)void refreshPlanMetrics(plan);}}>
+   <option value=''>Choose a specific production plan</option>
+   {operatorEligiblePlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_date} · {plan.production_line} · {planShiftLabel(plan)} · {plan.brand||'—'} · {plan.product_name} · {plan.model} · {Number(plan.planned_qty||0).toLocaleString()} units · #{plan.id.slice(0,8)} · {plan.status.toUpperCase()}</option>)}
+  </select><small>Plans on the same line or product remain separate. Choose the exact shift, target quantity and plan ID.</small></label>
+  <div className='operator-plan-availability'><strong>{operatorEligiblePlans.length.toLocaleString()}</strong><span>available Draft / Active plans</span><small>Completed and cancelled plans are not selectable.</small></div>
  </div>
- {operatorFilters.production_line&&operatorFilters.brand&&operatorFilters.product_name&&<div className='matching-plan-row'><label>Matching production plan<select value={selectedPlan?.id||''} onChange={e=>{const plan=matchingOperatorPlans.find(p=>p.id===e.target.value)||null;setSelectedPlan(plan);setDetailsPanel('');setDuplicateWarning(null)}}><option value=''>Choose production plan</option>{matchingOperatorPlans.map(p=><option key={p.id} value={p.id}>{p.production_date} · {p.model} · {Number(p.planned_qty||0).toLocaleString()} planned · {p.production_line}</option>)}</select></label>{selectedPlan&&<span className={selectedPlan.status==='active'?'badge':'plan-status-badge status-draft'}>{selectedPlan.status==='active'?'ACTIVE PLAN':'DRAFT · WAITING FOR SHIFT'}</span>}</div>}
  {selectedPlan&&<><div className='operator-plan-strip'><div><span className='eyebrow'>SELECTED PLAN</span><strong>{selectedPlan.brand||'—'} · {selectedPlan.product_name} · {selectedPlan.model}</strong><span>{selectedPlan.production_line} · Production date: {selectedPlan.production_date}</span></div><div className='plan-stamp'><span>Plan status</span><b>{selectedPlan.status}</b></div></div>
   <div className='operator-active-progress'><div className='operator-active-progress-head'><span>ACTIVE PRODUCTION PROGRESS</span><strong>{selectedPlan.planned_qty?Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100):0}% complete</strong></div><div className='progress-track'><div className='progress-fill' style={{width:(selectedPlan.planned_qty?Math.min(100,scannedSerials.length/Number(selectedPlan.planned_qty)*100):0)+'%'}}/></div><div className='operator-active-progress-foot'><span>{scannedSerials.length.toLocaleString()} units scanned</span><span>{pendingSerials.length.toLocaleString()} remaining of {Number(selectedPlan.planned_qty||0).toLocaleString()}</span></div></div>
   <div className='operator-dashboard-grid'><div className='operator-progress-pane'><div className='operator-metrics'>
@@ -779,7 +838,7 @@ export default function App({user}){
   <div className='last-scan-time'><span>Last scan attempt</span><b>{lastScanAt?new Date(lastScanAt).toLocaleString('en-IN'):'No scan yet'}</b><span className='live-refresh'>Progress refreshes automatically</span></div>
   </div></div>
  </>}
- {!selectedPlan&&<div className='notice'>{operatorFilters.product_name?'No active production plan matches these filters.':'Select production line, brand and product to display the relevant active production plan.'}</div>}
+ {!selectedPlan&&<div className='notice'>{operatorFilters.product_name?'No Draft or Active plans are available for scanning.':'Select a production plan above to load its serial allocation and scanner.'}</div>}
  </section></main>}
  {duplicateWarning&&<div className='warning-backdrop' role='alertdialog' aria-modal='true' aria-labelledby='duplicate-warning-title'><section className='warning-dialog'><div className='warning-symbol'>!</div><span className='eyebrow'>OPERATOR ATTENTION REQUIRED</span><h2 id='duplicate-warning-title'>Duplicate serial detected</h2><p>This serial has already been scanned for the selected production plan. Do not apply the same label again.</p><div className='warning-serial'><span>Serial number</span><b>{duplicateWarning.serial_number}</b><span>Label number</span><b>{duplicateWarning.label_number}</b></div><p className='warning-time'>Detected: {new Date(duplicateWarning.detected_at).toLocaleString('en-IN')}</p><button className='warning-ack' onClick={()=>setDuplicateWarning(null)}>Acknowledge warning</button></section></div>}
  </div>
