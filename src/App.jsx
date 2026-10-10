@@ -460,6 +460,7 @@ export default function App(){
  const startCamera=async()=>{
   if(!selectedPlan){setMessage('Select a production plan first.');return;}
   const current=new Date(),today=localDateKey(current),minutes=getLocalMinutes(current),shift=getPlanShiftWindow(selectedPlan);
+  if(selectedPlan.status==='completed'||selectedPlan.status==='cancelled'){setMessage('This plan is '+selectedPlan.status+' and cannot accept new scans.');return;}
   if(selectedPlan.production_date!==today){setMessage('This plan can only be scanned on its production date ('+selectedPlan.production_date+').');return;}
   if(!shift){setMessage('This plan has no hourly shift schedule. Create a plan with shift hours before scanning.');return;}
   if(minutes<shift.start){setMessage('Shift has not started yet. Scanning begins at '+String(Math.floor(shift.start/60)).padStart(2,'0')+':00.');return;}
@@ -493,7 +494,7 @@ export default function App(){
  <div className='dashboard-footer'><span><i className='live-dot'/> Monitoring refreshes automatically</span><span>Last updated: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Loading…'}</span><button onClick={()=>setView('operator')}>Open Operator Scanner →</button></div>
 </main>}
 {view==='live-monitoring'&&<main className='live-monitoring-page'>
- <section className='monitoring-hero'><div><span className='eyebrow'>SHOP FLOOR / LIVE VIEW</span><h2>Live production monitoring</h2><p>Current output, line-wise progress and the latest scans from active production.</p></div><div className='monitoring-live-status'><i className='live-dot'/> LIVE <span>{monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Connecting…'}</span><button onClick={()=>{void refreshMonitoring();void load()}}>↻ Refresh</button></div></section>
+ <section className='monitoring-hero'><div><span className='eyebrow'>SHOP FLOOR / LIVE VIEW</span><h2>Live production monitoring</h2><p>Current output and line-wise progress for active production plans.</p></div><div className='monitoring-live-status'><i className='live-dot'/> LIVE <span>{monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Connecting…'}</span><button onClick={()=>{void refreshMonitoring();void load()}}>↻ Refresh</button></div></section>
  {monitoringError&&<div className='notice dashboard-error'>{monitoringError}</div>}
  <div className='dashboard-kpis monitoring-kpis'>
   <div className='dashboard-kpi'><span className='kpi-label'>Active plans</span><div className='kpi-value'>{activePlans.length.toLocaleString()}<span className='kpi-icon kpi-blue'>▦</span></div><small>Currently running plans</small></div>
