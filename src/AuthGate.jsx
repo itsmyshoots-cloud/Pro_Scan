@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import App from './App.jsx';
 import {supabase} from './lib/supabase';
+import './auth.css';
 
 function LoginScreen(){
  const [email,setEmail]=useState('');
