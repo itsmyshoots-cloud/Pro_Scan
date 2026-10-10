@@ -11,7 +11,7 @@ function createHourlyTargets(start='09:00',end='18:00',previous=[]){
  const toMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m>=0&&m<60?h*60+m:NaN;};
  const startMinutes=toMinutes(start),endMinutes=toMinutes(end);
  if(!Number.isFinite(startMinutes)||!Number.isFinite(endMinutes)||endMinutes<=startMinutes||(endMinutes-startMinutes)%60!==0)return [];
- const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]);
+ const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]));
  const output=[];
  for(let minute=startMinutes;minute<endMinutes&&output.length<24;minute+=60){
   const hour=String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');
@@ -491,7 +491,7 @@ export default function App(){
   if(selectedPlan.status==='completed'||selectedPlan.status==='cancelled'){setMessage('This plan is '+selectedPlan.status+' and cannot accept new scans.');return;}
   if(selectedPlan.production_date!==today){setMessage('This plan can only be scanned on its production date ('+selectedPlan.production_date+').');return;}
   if(!shift){setMessage('This plan has no hourly shift schedule. Create a plan with shift hours before scanning.');return;}
-  if(minutes<shift.start){setMessage('Shift has not started yet. Scanning begins at '+String(Math.floor(shift.start/60)).padStart(2,'0')+':00.');return;}
+  if(minutes<shift.start){const startText=String(Math.floor(shift.start/60)).padStart(2,'0')+':'+String(shift.start%60).padStart(2,'0');setMessage('Shift has not started yet. Scanning begins at '+formatClock12(startText)+'.');return;}
   if(minutes>=shift.end){if(selectedPlan.status!=='completed'&&selectedPlan.status!=='cancelled')await updatePlanStatus(selectedPlan.id,'completed');setMessage('The production shift has ended. This plan is marked completed.');setCamera(false);return;}
   if(selectedPlan.status!=='active'){
    const {data,error}=await supabase.from('production_plans').update({status:'active'}).eq('id',selectedPlan.id).in('status',['draft','active']).select().maybeSingle();
