@@ -150,7 +150,7 @@ export default function App({user}){
  const [newUserRole,setNewUserRole]=useState('operator');
  const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const scannerInputRef=useRef(null); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
+ const operator='Operator'; const scannerInputRef=useRef(null); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [manageFilters,setManageFilters]=useState({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'}); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false); const productionChannelRef=useRef(null); const realtimeRefreshRef=useRef({});
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -252,6 +252,7 @@ export default function App({user}){
   if(selectedPlan?.id===planId)setSelectedPlan(data);
   setMessage('Production plan status changed to '+status+'.');
   setStatusUpdatingId('');
+  broadcastProductionChange('plan',planId);
   await refreshMonitoring();
  };
 
@@ -286,6 +287,31 @@ export default function App({user}){
   setPlanSerials(serialResult.data||[]);
   setDuplicateScans(duplicateResult.data||[]);
  };
+ const broadcastProductionChange=(kind,planId=null,recordId=null)=>{
+  const channel=productionChannelRef.current;if(!channel)return;
+  try{const sent=channel.send({type:'broadcast',event:'production-changed',payload:{kind,planId,recordId,at:Date.now()}});if(sent&&typeof sent.catch==='function')sent.catch(()=>{});}catch{}
+ };
+ useEffect(()=>{
+  const channel=supabase.channel('pro-scan-live-production',{config:{broadcast:{self:false}}})
+   .on('broadcast',{event:'production-changed'},async({payload})=>{
+    const handlers=realtimeRefreshRef.current||{},kind=payload?.kind,planId=payload?.planId,recordId=payload?.recordId;
+    if(kind==='scan'&&recordId&&planId){
+     const {data,error}=await supabase.from('plan_serials').select('id,plan_id,status,scanned_at,serial_number,label_number,sequence_no,scanned_by').eq('id',recordId).maybeSingle();
+     if(!error&&data){
+      const merge=previous=>previous.some(row=>row.id===data.id)?previous.map(row=>row.id===data.id?{...row,...data}:row):[...previous,data];
+      setMonitoringSerials(merge);
+      if(handlers.selectedPlan?.id===planId)setPlanSerials(merge);
+      setMonitoringUpdatedAt(new Date());return;
+     }
+    }
+    void handlers.refreshMonitoring?.();
+    if((kind==='duplicate'||kind==='event')&&handlers.selectedPlan?.id===planId)void handlers.refreshPlanMetrics?.(handlers.selectedPlan);
+    if(kind==='plan'){void handlers.load?.();if(handlers.selectedPlan)void handlers.refreshPlanMetrics?.(handlers.selectedPlan);}
+   }).subscribe();
+  productionChannelRef.current=channel;
+  return()=>{productionChannelRef.current=null;void supabase.removeChannel(channel);};
+ },[]);
+
  useEffect(()=>{load()},[]);
  useEffect(()=>{const timer=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(timer)},[]);
  useEffect(()=>{if(!['dashboard','live-monitoring','manage'].includes(view))return;void refreshMonitoring();const timer=setInterval(()=>{void refreshMonitoring()},8000);return()=>clearInterval(timer)},[view,plans.map(plan=>plan.id+':'+plan.status).join('|')]);
@@ -339,7 +365,10 @@ export default function App({user}){
   const pending=monitoringSerials.filter(row=>ids.has(row.plan_id)&&row.status!=='scanned').length;
   return {line,plans:linePlans.length,target,scanned,pending,percent:target?Math.min(100,Math.round(scanned/target*100)):0};
  }),[activePlans,monitoringSerials]);
- const filteredPlans=useMemo(()=>plans.filter(plan=>planStatusFilter==='all'||plan.status===planStatusFilter),[plans,planStatusFilter]);
+ const manageMonthOptions=useMemo(()=>[...new Set(plans.map(plan=>(plan.production_date||'').slice(0,7)).filter(value=>/^\\d{4}-\\d{2}$/.test(value)))].sort().reverse(),[plans]);
+ const manageModelOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.model).filter(Boolean))].sort(),[plans]);
+ const manageLineOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.production_line).filter(Boolean))].sort(),[plans]);
+ const filteredPlans=useMemo(()=>plans.filter(plan=>(planStatusFilter==='all'||plan.status===planStatusFilter)&&(!manageFilters.date_from||plan.production_date>=manageFilters.date_from)&&(!manageFilters.date_to||plan.production_date<=manageFilters.date_to)&&(manageFilters.month==='all'||(plan.production_date||'').slice(0,7)===manageFilters.month)&&(manageFilters.model==='all'||plan.model===manageFilters.model)&&(manageFilters.production_line==='all'||plan.production_line===manageFilters.production_line)),[plans,planStatusFilter,manageFilters]);
 
  const reportProductOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.product_name).filter(Boolean))].sort(),[plans]);
  const reportBrandOptions=useMemo(()=>[...new Set(plans.map(plan=>plan.brand).filter(Boolean))].sort(),[plans]);
@@ -519,6 +548,7 @@ export default function App({user}){
    const savedPlan=Array.isArray(data)?data[0]:data;if(!savedPlan?.id){setBusy(false);return setMessage('The update response was unexpected. Refresh Manage Production to verify the saved plan.');}
    setPlans(previous=>previous.map(plan=>plan.id===planId?savedPlan:plan));setSelectedPlan(previous=>previous?.id===planId?savedPlan:previous);
    setEditingPlanId('');setRows([]);setSourceFile('');setFileInfo('');setBusy(false);setMessage('Draft production plan updated successfully. '+qty.toLocaleString()+' serials are allocated to the revised shift.');
+   broadcastProductionChange('plan',planId);
    setView('manage');void load();void refreshMonitoring();return;
   }
   setMessage('Creating plan and allocating '+qty.toLocaleString()+' serials…');
@@ -527,7 +557,7 @@ export default function App({user}){
   const payload=chosen.map((row,index)=>({...row,plan_id:plan.id,sequence_no:index+1}));
   const {error:serialError}=await supabase.from('plan_serials').insert(payload);
   if(serialError){setBusy(false);await load();return setMessage('Plan saved as draft, but serial allocation failed: '+serialError.message+'. No active plan was published.');}
-  await load();setSelectedPlan(plan);setEditingPlanId('');setBusy(false);setMessage('Production plan created as Draft with '+payload.length.toLocaleString()+' allocated serials. Select the exact plan and shift in Operator during its scheduled hours.');setView('plans');
+  await load();setSelectedPlan(plan);setEditingPlanId('');setBusy(false);setMessage('Production plan created as Draft with '+payload.length.toLocaleString()+' allocated serials. Select the exact plan and shift in Operator during its scheduled hours.');broadcastProductionChange('plan',plan.id);setView('plans');
  };
  const scan=async value=>{
   if(scanInFlightRef.current||!selectedPlan||!value)return;
@@ -551,18 +581,14 @@ export default function App({user}){
     const {error:eventError}=await supabase.from('scan_events').insert({serial_number:serialValue||clean,plan_id:selectedPlan.id,operator_name:operator,production_line:selectedPlan.production_line||null,scan_status:status});
     return eventError;
    };
-   const showDuplicate=async row=>{
-    const detectedAt=new Date().toISOString();
-    setDuplicateWarning({serial_number:row.serial_number,label_number:row.label_number||clean,detected_at:detectedAt});
-    setMessage('DUPLICATE SCAN: '+row.serial_number+' · Label '+(row.label_number||clean));
-    const eventError=await recordEvent('duplicate',row.serial_number);
-    await refreshPlanMetrics(selectedPlan);
-    if(eventError)setMessage('Duplicate detected, but duplicate-event logging failed: '+eventError.message);
+   const showDuplicate=row=>{
+    const detectedAt=new Date().toISOString();setDuplicateWarning({serial_number:row.serial_number,label_number:row.label_number||clean,detected_at:detectedAt});
+    const duplicateMessage='DUPLICATE SCAN: '+row.serial_number+' · Label '+(row.label_number||clean);setMessage(duplicateMessage);
+    void recordEvent('duplicate',row.serial_number).then(eventError=>{broadcastProductionChange('duplicate',selectedPlan.id);void refreshPlanMetrics(selectedPlan);if(eventError)setMessage(current=>current===duplicateMessage?duplicateMessage+' · event log failed':current);});
    };
    if(!data){
-    setMessage('NOT ALLOCATED TO THIS PLAN: '+clean);
-    const eventError=await recordEvent('missing',clean);
-    if(eventError)setMessage('Serial not allocated. Event logging failed: '+eventError.message);
+    const missingMessage='NOT ALLOCATED TO THIS PLAN: '+clean;setMessage(missingMessage);
+    void recordEvent('missing',clean).then(eventError=>{broadcastProductionChange('event',selectedPlan.id);if(eventError)setMessage(current=>current===missingMessage?missingMessage+' · event log failed':current);});
     return;
    }
    if(data.status==='scanned'){await showDuplicate(data);return;}
@@ -572,11 +598,12 @@ export default function App({user}){
     .eq('id',data.id).eq('status','pending').select('id').maybeSingle();
    if(updateError){setMessage('Could not record scan: '+updateError.message);return;}
    if(!updated){await showDuplicate(data);return;}
-   setPlanSerials(previous=>previous.map(row=>row.id===data.id?{...row,status:'scanned',scanned_at:scannedAt,scanned_by:operator}:row));
-   setLastScanAt(scannedAt);
-   setMessage('✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—'));
-   const eventError=await recordEvent('success',data.serial_number);
-   if(eventError)setMessage('✓ SCANNED: '+data.serial_number+' · scan event logging failed');
+   const scannedRow={...data,status:'scanned',scanned_at:scannedAt,scanned_by:operator};
+   const mergeScanned=previous=>previous.some(row=>row.id===data.id)?previous.map(row=>row.id===data.id?{...row,...scannedRow}:row):[...previous,scannedRow];
+   setPlanSerials(mergeScanned);setMonitoringSerials(mergeScanned);setMonitoringUpdatedAt(new Date());setLastScanAt(scannedAt);
+   const successMessage='✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—');setMessage(successMessage);
+   broadcastProductionChange('scan',selectedPlan.id,data.id);
+   void recordEvent('success',data.serial_number).then(eventError=>{if(eventError)setMessage(current=>current===successMessage?successMessage+' · scan event log failed':current);});
   }catch(error){
    setMessage('Scan failed: '+(error?.message||'Unknown error'));
   }finally{
@@ -781,7 +808,8 @@ export default function App({user}){
 {view==='manage'&&<main className='manage-production-page'>
  <section className='management-title-bar'><div><span className='eyebrow'>PRODUCTION PLANS</span><h2>Manage production</h2><p>Review progress and plan status. Completed quantity updates status automatically.</p></div><button className='primary' onClick={startNewPlan}>＋ New production plan</button></section>
  {message&&<div className='notice management-message'>{message}</div>}
- <div className='management-filter-bar'><div><b>{filteredPlans.length}</b><span>plan(s) shown</span></div><label>Filter by status<select value={planStatusFilter} onChange={e=>setPlanStatusFilter(e.target.value)}><option value='all'>All statuses</option><option value='active'>Active</option><option value='draft'>Draft</option><option value='completed'>Completed</option><option value='cancelled'>Cancelled</option></select></label><button onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button></div>
+ <section className='management-advanced-filters'><div className='management-advanced-heading'><div><span className='eyebrow'>FILTER PRODUCTION</span><strong>Find plans by date, month, model or line</strong></div><button type='button' onClick={()=>{setManageFilters({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'});setPlanStatusFilter('all');}}>Reset filters</button></div><div className='management-advanced-grid'><label>From date<input type='date' value={manageFilters.date_from} onChange={e=>setManageFilters({...manageFilters,date_from:e.target.value})}/></label><label>To date<input type='date' value={manageFilters.date_to} onChange={e=>setManageFilters({...manageFilters,date_to:e.target.value})}/></label><label>Month<select value={manageFilters.month} onChange={e=>setManageFilters({...manageFilters,month:e.target.value})}><option value='all'>All months</option>{manageMonthOptions.map(value=><option value={value} key={value}>{new Date(value+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option>)}</select></label><label>Model<select value={manageFilters.model} onChange={e=>setManageFilters({...manageFilters,model:e.target.value})}><option value='all'>All models</option>{manageModelOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label><label>Production line<select value={manageFilters.production_line} onChange={e=>setManageFilters({...manageFilters,production_line:e.target.value})}><option value='all'>All lines</option>{manageLineOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label></div></section>
+<div className='management-filter-bar'><div><b>{filteredPlans.length}</b><span>plan(s) shown</span></div><label>Filter by status<select value={planStatusFilter} onChange={e=>setPlanStatusFilter(e.target.value)}><option value='all'>All statuses</option><option value='active'>Active</option><option value='draft'>Draft</option><option value='completed'>Completed</option><option value='cancelled'>Cancelled</option></select></label><button onClick={()=>{void load();void refreshMonitoring()}}>↻ Refresh</button></div>
  <section className='panel management-table-panel'>{filteredPlans.length?<div className='management-table-wrap'><table className='management-table'><thead><tr><th>Date</th><th>Product / Model</th><th>Line</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredPlans.map(plan=>{const serials=monitoringSerials.filter(row=>row.plan_id===plan.id);const scanned=serials.filter(row=>row.status==='scanned').length;const target=Number(plan.planned_qty||0);const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}><td>{plan.production_date}</td><td><div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · {target.toLocaleString()} units</small></td><td>{plan.production_line}</td><td><div className='manage-progress'><div className='progress-track'><div className='progress-fill' style={{width:Math.min(100,pct)+'%'}}/></div><span>{scanned.toLocaleString()} / {target.toLocaleString()} ({pct}%)</span></div></td><td><span className={'plan-status-badge status-'+plan.status}>{plan.status}</span></td><td><div className='table-actions'>{plan.status==='draft'&&<button disabled={busy} onClick={()=>void startEditPlan(plan)}>Edit draft</button>}{plan.status==='draft'&&<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>}{plan.status==='active'&&<button onClick={()=>{setSelectedPlan(plan);setView('operator')}}>Operator</button>}{(plan.status==='draft'||plan.status==='active')&&<button disabled={statusUpdatingId===plan.id} onClick={()=>void updatePlanStatus(plan.id,'cancelled')}>Cancel</button>}</div></td></tr>})}</tbody></table></div>:<div className='empty'>No production plans match this filter.</div>}</section>
  <div className='management-footnote'><span>Plan status changes apply to operator selection and live monitoring.</span><span>Last refreshed: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN'):'Loading…'}</span></div>
 </main>}
