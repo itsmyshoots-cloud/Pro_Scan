@@ -1,5 +1,4 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {BrowserCodeReader,BrowserMultiFormatReader} from '@zxing/browser';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import {supabase} from './lib/supabase';
@@ -130,7 +129,7 @@ export default function App({user}){
  const [newUserRole,setNewUserRole]=useState('operator');
  const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
+ const operator='Operator'; const scannerInputRef=useRef(null); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -196,7 +195,7 @@ export default function App({user}){
   const nextPlans=plans.map(plan=>updated.find(changed=>changed.id===plan.id)||plan);
   setPlans(nextPlans);
   const changedSelected=updated.find(plan=>plan.id===selectedPlan?.id);
-  if(changedSelected){setSelectedPlan(changedSelected);if(changedSelected.status==='completed'||changedSelected.status==='cancelled')setCamera(false);}
+  if(changedSelected){setSelectedPlan(changedSelected);if(changedSelected.status==='completed'||changedSelected.status==='cancelled')setScannerReady(false);}
   return nextPlans;
  };
  const refreshMonitoring=async()=>{
@@ -258,8 +257,8 @@ export default function App({user}){
  const refreshPlanMetrics=async(plan=selectedPlan)=>{
   if(!plan){setPlanSerials([]);setDuplicateScans([]);return;}
   const [serialResult,duplicateResult]=await Promise.all([
-   fetchAllRows((from,to)=>supabase.from('plan_serials').select('id,label_number,serial_number,status,scanned_at,scanned_by,sequence_no').eq('plan_id',plan.id).order('sequence_no',{ascending:true}).range(from,to)),
-   fetchAllRows((from,to)=>supabase.from('scan_events').select('id,plan_id,serial_number,scanned_at,operator_name,production_line').eq('plan_id',plan.id).eq('scan_status','duplicate').order('scanned_at',{ascending:false}).range(from,to))
+   fetchAllRows((from,to)=>supabase.from('plan_serials').select('id,plan_id,serial_number_id,label_number,serial_number,status,scanned_at,scanned_by,sequence_no,created_at').eq('plan_id',plan.id).order('sequence_no',{ascending:true}).range(from,to)),
+   fetchAllRows((from,to)=>supabase.from('scan_events').select('id,plan_id,serial_number,scanned_at,operator_name,production_line,scan_status,serial_number_id').eq('plan_id',plan.id).eq('scan_status','duplicate').order('scanned_at',{ascending:false}).range(from,to))
   ]);
   if(serialResult.error){setMessage('Could not load plan progress: '+serialResult.error.message);return;}
   if(duplicateResult.error){setMessage('Could not load duplicate scans: '+duplicateResult.error.message);return;}
@@ -289,6 +288,17 @@ export default function App({user}){
  const scannedSerials=useMemo(()=>planSerials.filter(s=>s.status==='scanned'),[planSerials]);
  const uniqueDuplicateSerials=useMemo(()=>[...new Map(duplicateScans.map(e=>[e.serial_number,e])).values()],[duplicateScans]);
  const lastScannedRecord=useMemo(()=>scannedSerials.reduce((latest,row)=>!latest||new Date(row.scanned_at||0).getTime()>new Date(latest.scanned_at||0).getTime()?row:latest,null),[scannedSerials]);
+ const recentScannedSerials=useMemo(()=>[...scannedSerials].sort((a,b)=>new Date(b.scanned_at||0).getTime()-new Date(a.scanned_at||0).getTime()).slice(0,8),[scannedSerials]);
+ const detailRows=useMemo(()=>{
+  let rows=[];
+  if(detailsPanel==='planned')rows=planSerials;
+  else if(detailsPanel==='scanned')rows=scannedSerials;
+  else if(detailsPanel==='remaining')rows=pendingSerials;
+  else if(detailsPanel==='duplicates')rows=duplicateScans.map(event=>({...event,status:'duplicate',label_number:planSerials.find(row=>row.serial_number===event.serial_number)?.label_number||'—'}));
+  const query=detailsSearch.trim().toLowerCase();
+  if(!query)return rows;
+  return rows.filter(row=>[row.serial_number,row.label_number,row.sequence_no,row.status,row.scanned_by,row.operator_name,row.production_line,row.scanned_at,row.created_at].some(value=>String(value??'').toLowerCase().includes(query)));
+ },[detailsPanel,planSerials,scannedSerials,pendingSerials,duplicateScans,detailsSearch]);
  const activePlanIds=useMemo(()=>new Set(activePlans.map(plan=>plan.id)),[activePlans]);
  const activePlanSerials=useMemo(()=>monitoringSerials.filter(row=>activePlanIds.has(row.plan_id)),[monitoringSerials,activePlanIds]);
  const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0),[activePlans]);
@@ -496,102 +506,101 @@ export default function App({user}){
   if(scanInFlightRef.current||!selectedPlan||!value)return;
   const raw=String(value).trim().toUpperCase();if(!raw)return;
   const token=raw.match(/\bP-\d+\b|\bGM\d+\b/i),clean=(token?.[0]||raw).toUpperCase();
-  const nowMs=Date.now();if(lastScanRef.current.value===clean&&nowMs-lastScanRef.current.at<700)return;
-  lastScanRef.current={value:clean,at:nowMs};
   scanInFlightRef.current=true;
-  setLastScanAt(new Date(nowMs).toISOString());
+  setLastScanAt(new Date().toISOString());
   try{
+   const current=new Date(),today=localDateKey(current),minutes=getLocalMinutes(current),shift=getPlanShiftWindow(selectedPlan);
+   if(!scannerReady){setMessage('SCANNER NOT READY · Check the selected plan and shift.');return;}
+   if(selectedPlan.status==='completed'||selectedPlan.status==='cancelled'){setScannerReady(false);setMessage('This plan is '+selectedPlan.status+' and cannot accept scans.');return;}
+   if(selectedPlan.production_date!==today){setScannerReady(false);setMessage('This plan can only be scanned on its production date ('+selectedPlan.production_date+').');return;}
+   if(!shift){setScannerReady(false);setMessage('This plan has no saved shift schedule.');return;}
+   if(minutes<shift.start){setScannerReady(false);setMessage('Shift has not started. Scanner will be ready at '+formatClock12(String(Math.floor(shift.start/60)).padStart(2,'0')+':'+String(shift.start%60).padStart(2,'0'))+'.');return;}
+   if(minutes>=shift.end){setScannerReady(false);if(selectedPlan.status!=='completed'&&selectedPlan.status!=='cancelled')await updatePlanStatus(selectedPlan.id,'completed');setMessage('The production shift has ended. Select the next plan.');return;}
    const lookup=supabase.from('plan_serials').select('*').eq('plan_id',selectedPlan.id);
    const lookupQuery=/^(P-\d+|GM\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
    const {data,error}=await lookupQuery.maybeSingle();
-   if(error){setMessage('Could not check serial '+clean+': '+error.message);cameraLastCodeRef.current='';return;}
+   if(error){setMessage('Could not check serial '+clean+': '+error.message);return;}
    const recordEvent=async(status,serialValue)=>{
     const {error:eventError}=await supabase.from('scan_events').insert({serial_number:serialValue||clean,plan_id:selectedPlan.id,operator_name:operator,production_line:selectedPlan.production_line||null,scan_status:status});
     return eventError;
    };
-   const showDuplicate=row=>{
+   const showDuplicate=async row=>{
     const detectedAt=new Date().toISOString();
     setDuplicateWarning({serial_number:row.serial_number,label_number:row.label_number||clean,detected_at:detectedAt});
     setMessage('DUPLICATE SCAN: '+row.serial_number+' · Label '+(row.label_number||clean));
-    setCamera(false);
-    void recordEvent('duplicate',row.serial_number);
-    void refreshPlanMetrics(selectedPlan);
+    const eventError=await recordEvent('duplicate',row.serial_number);
+    await refreshPlanMetrics(selectedPlan);
+    if(eventError)setMessage('Duplicate detected, but duplicate-event logging failed: '+eventError.message);
    };
    if(!data){
-    setMessage('NOT REGISTERED IN THIS PLAN: '+clean);
-    void recordEvent('missing',clean);
+    setMessage('NOT ALLOCATED TO THIS PLAN: '+clean);
+    const eventError=await recordEvent('missing',clean);
+    if(eventError)setMessage('Serial not allocated. Event logging failed: '+eventError.message);
     return;
    }
-   if(data.status==='scanned'){showDuplicate(data);return;}
+   if(data.status==='scanned'){await showDuplicate(data);return;}
    const scannedAt=new Date().toISOString();
    const {data:updated,error:updateError}=await supabase.from('plan_serials')
     .update({status:'scanned',scanned_at:scannedAt,scanned_by:operator})
     .eq('id',data.id).eq('status','pending').select('id').maybeSingle();
-   if(updateError){setMessage('Could not record scan: '+updateError.message);cameraLastCodeRef.current='';return;}
-   if(!updated){showDuplicate(data);return;}
+   if(updateError){setMessage('Could not record scan: '+updateError.message);return;}
+   if(!updated){await showDuplicate(data);return;}
    setPlanSerials(previous=>previous.map(row=>row.id===data.id?{...row,status:'scanned',scanned_at:scannedAt,scanned_by:operator}:row));
    setLastScanAt(scannedAt);
-   setMessage('✓ REGISTERED & SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—'));
-   void recordEvent('success',data.serial_number).then(eventError=>{
-    if(eventError)setMessage(current=>current.startsWith('✓ REGISTERED & SCANNED: '+data.serial_number)?current+' (scan event logging failed)':current);
-   });
+   setMessage('✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—'));
+   const eventError=await recordEvent('success',data.serial_number);
+   if(eventError)setMessage('✓ SCANNED: '+data.serial_number+' · scan event logging failed');
   }catch(error){
    setMessage('Scan failed: '+(error?.message||'Unknown error'));
-   cameraLastCodeRef.current='';
   }finally{
    scanInFlightRef.current=false;
   }
  };
- scanRef.current=scan;
- useEffect(()=>{
-  if(!camera)return;
-  let disposed=false;let scannerControls=null;
-  const reader=new BrowserMultiFormatReader();readerRef.current=reader;cameraLastCodeRef.current='';
-  const boot=async()=>{
-   const video=videoRef.current;
-   if(!video){if(!disposed){setMessage('Camera preview is not ready. Please try again.');setCamera(false);}return;}
-   video.muted=true;video.playsInline=true;
-   try{
-    const devices=await BrowserCodeReader.listVideoInputDevices();
-    if(disposed)return;
-    const rearCamera=devices.find(device=>/back|rear|environment|wide/i.test(device.label));
-    const selectedDeviceId=rearCamera?.deviceId||devices[devices.length-1]?.deviceId;
-    scannerControls=await reader.decodeFromVideoDevice(selectedDeviceId,video,(result,error)=>{
-     if(disposed||!result||scanInFlightRef.current)return;
-     const text=result.getText();
-     const token=String(text).trim().toUpperCase().match(/\bP-\d+\b|\bGM\d+\b/i);
-     const code=(token?.[0]||String(text).trim()).toUpperCase();
-     if(!code||cameraLastCodeRef.current===code)return;
-     cameraLastCodeRef.current=code;
-     setMessage('QR detected: '+code+' · Checking selected plan…');
-     void scanRef.current?.(text);
-    });
-    if(disposed)scannerControls?.stop();
-   }catch(e){if(!disposed){setMessage('Camera could not start. Check browser camera permission and allow camera access. '+(e?.message||''));setCamera(false);}}
-  };
-  void boot();
-  return()=>{disposed=true;try{scannerControls?.stop()}catch{}try{reader.reset()}catch{}if(videoRef.current)videoRef.current.srcObject=null;if(readerRef.current===reader)readerRef.current=null;};
- },[camera,selectedPlan?.id]);
- const startCamera=async()=>{
-  if(!selectedPlan){setMessage('Select a production plan first.');return;}
-  const current=new Date(),today=localDateKey(current),minutes=getLocalMinutes(current),shift=getPlanShiftWindow(selectedPlan);
-  if(selectedPlan.status==='completed'||selectedPlan.status==='cancelled'){setMessage('This plan is '+selectedPlan.status+' and cannot accept new scans.');return;}
-  if(selectedPlan.production_date!==today){setMessage('This plan can only be scanned on its production date ('+selectedPlan.production_date+').');return;}
-  if(!shift){setMessage('This plan has no hourly shift schedule. Create a plan with shift hours before scanning.');return;}
-  if(minutes<shift.start){const startText=String(Math.floor(shift.start/60)).padStart(2,'0')+':'+String(shift.start%60).padStart(2,'0');setMessage('Shift has not started yet. Scanning begins at '+formatClock12(startText)+'.');return;}
-  if(minutes>=shift.end){if(selectedPlan.status!=='completed'&&selectedPlan.status!=='cancelled')await updatePlanStatus(selectedPlan.id,'completed');setMessage('The production shift has ended. This plan is marked completed.');setCamera(false);return;}
-  if(selectedPlan.status!=='active'){
-   const {data,error}=await supabase.from('production_plans').update({status:'active'}).eq('id',selectedPlan.id).in('status',['draft','active']).select().maybeSingle();
-   if(error){setMessage('Could not activate production plan: '+error.message);return;}
-   const activePlan=data||{...selectedPlan,status:'active'};
-   setSelectedPlan(activePlan);setPlans(previous=>previous.map(plan=>plan.id===activePlan.id?activePlan:plan));
-  }
-  setMessage('Starting camera…');setCamera(true);
+ const enqueueScannerValue=value=>{
+  const clean=String(value||'').trim();
+  if(!clean)return;
+  scanQueueRef.current.push(clean);
+  if(scanQueueBusyRef.current)return;
+  scanQueueBusyRef.current=true;
+  void (async()=>{
+   try{while(scanQueueRef.current.length)await scan(scanQueueRef.current.shift());}
+   finally{scanQueueBusyRef.current=false;}
+  })();
  };
- const stopCamera=()=>{try{readerRef.current?.reset()}catch{}setCamera(false)};
- useEffect(()=>{if(view!=='operator'){if(camera)stopCamera();return;}if(!selectedPlan||showPlanSetup)return;void startCamera();const shift=getPlanShiftWindow(selectedPlan),current=new Date(),minutes=getLocalMinutes(current);if(selectedPlan.production_date===localDateKey(current)&&shift&&minutes<shift.start){const timer=setTimeout(()=>void startCamera(),Math.max(1000,(shift.start-minutes)*60000+1200));return()=>clearTimeout(timer);}},[view,selectedPlan?.id,showPlanSetup]);
- useEffect(()=>{if(!duplicateWarning)return;const timer=setTimeout(()=>setDuplicateWarning(null),4200);return()=>clearTimeout(timer);},[duplicateWarning]);
-
+ const prepareSelectedPlanForScanning=async()=>{
+  if(view!=='operator'||!selectedPlan||showPlanSetup){setScannerReady(false);return;}
+  const plan=selectedPlan,current=new Date(),today=localDateKey(current),minutes=getLocalMinutes(current),shift=getPlanShiftWindow(plan);
+  if(plan.status==='completed'||plan.status==='cancelled'){setScannerReady(false);setMessage('This plan is '+plan.status+' and cannot accept new scans.');return;}
+  if(plan.production_date!==today){setScannerReady(false);setMessage('This plan can only be scanned on '+plan.production_date+'.');return;}
+  if(!shift){setScannerReady(false);setMessage('This plan has no hourly shift schedule.');return;}
+  if(minutes<shift.start){setScannerReady(false);setMessage('Waiting for shift start at '+formatClock12(String(Math.floor(shift.start/60)).padStart(2,'0')+':'+String(shift.start%60).padStart(2,'0'))+'.');return;}
+  if(minutes>=shift.end){setScannerReady(false);if(plan.status!=='completed'&&plan.status!=='cancelled')await updatePlanStatus(plan.id,'completed');setMessage('The production shift has ended. Select the next plan.');return;}
+  if(plan.status!=='active'){
+   const {data,error}=await supabase.from('production_plans').update({status:'active'}).eq('id',plan.id).in('status',['draft','active']).select().maybeSingle();
+   if(error){setScannerReady(false);setMessage('Could not activate production plan: '+error.message);return;}
+   const activePlan=data||{...plan,status:'active'};
+   setSelectedPlan(activePlan);setPlans(previous=>previous.map(row=>row.id===activePlan.id?activePlan:row));
+  }
+  setScannerReady(true);setMessage('2D BARCODE SCANNER READY · Scan QR codes continuously.');
+ };
+ useEffect(()=>{
+  if(view!=='operator'||!selectedPlan||showPlanSetup){setScannerReady(false);return;}
+  void prepareSelectedPlanForScanning();
+  const shift=getPlanShiftWindow(selectedPlan),current=new Date(),minutes=getLocalMinutes(current);
+  let timer=null;
+  if(shift&&selectedPlan.production_date===localDateKey(current)&&minutes<shift.start)timer=setTimeout(()=>void prepareSelectedPlanForScanning(),Math.max(1000,(shift.start-minutes)*60000+1200));
+  return()=>{if(timer)clearTimeout(timer);};
+ },[view,selectedPlan?.id,showPlanSetup]);
+ useEffect(()=>{
+  if(view!=='operator'||!scannerReady||showPlanSetup||detailsPanel)return;
+  const timer=setTimeout(()=>scannerInputRef.current?.focus(),60);
+  return()=>clearTimeout(timer);
+ },[view,scannerReady,showPlanSetup,detailsPanel,selectedPlan?.id]);
+ useEffect(()=>{
+  if(!duplicateWarning)return;
+  const timer=setTimeout(()=>setDuplicateWarning(null),2500);
+  return()=>clearTimeout(timer);
+ },[duplicateWarning]);
  const callAppAuth = async payload => {
   const {data,error}=await supabase.functions.invoke('app-auth',{body:payload});
   if(error)throw new Error(error.message||'Could not contact the authentication service.');
@@ -809,20 +818,20 @@ export default function App({user}){
     <div className='operator-assignment-heading'><span className='eyebrow'>PRODUCTION ASSIGNMENT</span><span className={'operator-plan-status status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</span></div>
     <strong>{selectedPlan.brand||'—'} · {selectedPlan.product_name} · {selectedPlan.model}</strong>
     <div className='operator-assignment-details'><span>{selectedPlan.production_line}</span><i/> <span>{planShiftLabel(selectedPlan)}</span><i/> <span>{Number(selectedPlan.planned_qty||0).toLocaleString()} units</span><i/> <span>#{selectedPlan.id.slice(0,8)}</span></div>
-    <button className='operator-change-plan' onClick={()=>{stopCamera();setShowPlanSetup(true);setMessage('Select the production plan for this shift.');}}>Change plan</button>
+    <button className='operator-change-plan' onClick={()=>{setScannerReady(false);setShowPlanSetup(true);setMessage('Select the production plan for this shift.');}}>Change plan</button>
    </div>:<div className='operator-plan-setup'>
     <div className='operator-assignment-heading'><span className='eyebrow'>SET PRODUCTION PLAN</span><span className='operator-setup-step'>Choose once · scan continuously</span></div>
     <label>Today's production plan<select value={selectedPlan?.id||''} onChange={e=>{
       const plan=operatorEligiblePlans.find(item=>item.id===e.target.value)||null;
-      stopCamera();setSelectedPlan(plan);setShowPlanSetup(!plan);setDetailsPanel('');setDuplicateWarning(null);
-      setMessage(plan?'Selected '+plan.production_line+' · '+planShiftLabel(plan)+'. Camera will start automatically.':'Choose one of today’s plans to begin.');
+      setScannerReady(false);setSelectedPlan(plan);setShowPlanSetup(!plan);setDetailsPanel('');setDetailsSearch('');setDuplicateWarning(null);
+      setMessage(plan?'Selected '+plan.production_line+' · '+planShiftLabel(plan)+'. Initializing the 2D barcode scanner…':'Choose one of today’s plans to begin.');
       if(plan)void refreshPlanMetrics(plan);
     }}>
      <option value=''>Choose line / product / shift for today</option>
      {operatorEligiblePlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_line} · {planShiftLabel(plan)} · {plan.product_name} · {plan.model} · {Number(plan.planned_qty||0).toLocaleString()} units · #{plan.id.slice(0,8)}</option>)}
     </select></label>
-    {selectedPlan&&<button className='operator-keep-plan' onClick={()=>{setShowPlanSetup(false);setMessage('');void startCamera();}}>Continue selected plan</button>}
-    {!selectedPlan&&<p>Select today’s plan once. Pro Scan will open the camera for QR scanning automatically.</p>}
+    {selectedPlan&&<button className='operator-keep-plan' onClick={()=>{setShowPlanSetup(false);setMessage('');void prepareSelectedPlanForScanning();}}>Continue selected plan</button>}
+    {!selectedPlan&&<p>Select today’s plan once. The 2D barcode scanner will be ready automatically for the scheduled shift.</p>}
    </div>}
   </div>
   <div className='operator-clock-block'>
@@ -831,15 +840,18 @@ export default function App({user}){
   </div>
  </section>
  {selectedPlan&&!showPlanSetup?<section className='operator-workstation-grid'>
-  <section className='operator-camera-panel'>
-   <div className='operator-camera-heading'><div><span>SCAN SERIAL QR CODE</span><small>Keep the barcode inside the camera frame</small></div><span className={camera?'operator-camera-live':'operator-camera-wait'}><i/> {camera?'CAMERA LIVE':'CAMERA STARTING'}</span></div>
-   <div className='scanner operator-live-scanner'>{camera?<video ref={videoRef} autoPlay muted playsInline webkit-playsinline='true'/>:<div className='camera-placeholder'><span className='camera-icon'>⌗</span><b>{message||'Preparing camera…'}</b><span>The camera will start automatically for the selected shift.</span></div>}</div>
-   <div className={'operator-scan-state '+(duplicateWarning?'is-duplicate':camera?'is-ready':'is-waiting')}><i/>{duplicateWarning?<><strong>Duplicate serial detected — do not apply this label.</strong><span>Alert clears automatically.</span></>:<><strong>{message|| (camera?'READY TO SCAN · Point the camera at a QR code':'Waiting for camera')}</strong><span>{camera?'Every valid scan is recorded automatically.':'Check browser camera permission if the camera does not start.'}</span></>}</div>
-   <div className='operator-last-scan-bar'>
-    <div className='operator-last-serial'><span>LAST SCANNED SERIAL</span><strong>{lastScannedRecord?.serial_number||'Waiting for first scan'}</strong><small>{lastScannedRecord?.label_number?'Label '+lastScannedRecord.label_number:'The scanned serial will appear here.'}</small></div>
-    <div className='operator-last-time'><span>LAST SCAN TIME</span><strong>{lastScannedRecord?.scanned_at?new Date(lastScannedRecord.scanned_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'—'}</strong><small>{lastScanAt?'Attempt '+new Date(lastScanAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'No scan attempt yet'}</small></div>
-   </div>
-   {!camera&&<div className='operator-camera-fallback'><button className='primary' onClick={()=>void startCamera()}>Start camera</button><span>Only use this if automatic camera start was blocked by the browser.</span></div>}
+  <section className='operator-camera-panel operator-hardware-panel'>
+   <div className='operator-camera-heading'><div><span>2D BARCODE SCANNER</span><small>Scan QR codes with your connected hardware scanner</small></div><span className={scannerReady?'operator-camera-live':'operator-camera-wait'}><i/> {scannerReady?'SCANNER READY':'WAITING FOR SHIFT'}</span></div>
+   <label className='hardware-scanner-entry'><span>SCANNER INPUT</span><input ref={scannerInputRef} autoComplete='off' autoCorrect='off' spellCheck={false} inputMode='none' value={scannerInputValue} onChange={e=>setScannerInputValue(e.target.value)} onKeyDown={event=>{
+    if(event.key==='Enter'||event.key==='Tab'){
+     event.preventDefault();const code=event.currentTarget.value;event.currentTarget.value='';setScannerInputValue('');enqueueScannerValue(code);
+    }
+   }} placeholder={scannerReady?'Ready — scan QR code now':'Waiting for selected shift to start'} disabled={!scannerReady} aria-label='2D barcode scanner input'/><small>Scanner codes are processed automatically when the scanner sends Enter or Tab.</small></label>
+   <div className={'operator-scan-state '+(duplicateWarning?'is-duplicate':scannerReady?'is-ready':'is-waiting')}><i/>{duplicateWarning?<><strong>Duplicate detected: {duplicateWarning.serial_number} — already scanned.</strong><span>Alert clears automatically.</span></>:<><strong>{message|| (scannerReady?'READY TO SCAN · Scan the next QR code':'Scanner not ready')}</strong><span>{scannerReady?'No mouse or keyboard interaction is needed during scanning.':'Check the selected plan and its scheduled shift.'}</span></>}</div>
+   <section className='operator-recent-scans'>
+    <div className='operator-recent-scans-heading'><div><span className='eyebrow'>RECENT SCAN HISTORY</span><strong>Last scanned QR codes</strong></div><span>{scannedSerials.length.toLocaleString()} total scanned</span></div>
+    {recentScannedSerials.length?<div className='operator-recent-list'>{recentScannedSerials.map((row,index)=><div className='operator-recent-row' key={row.id}><span className='operator-recent-index'>{index+1}</span><div className='operator-recent-code'><strong>{row.serial_number}</strong><small>Label {row.label_number||'—'} · Seq {row.sequence_no??'—'}</small></div><div className='operator-recent-time'>{row.scanned_at?new Date(row.scanned_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'—'}<small>SCANNED</small></div></div>)}</div>:<div className='operator-recent-empty'>No serials scanned yet. The latest scans will appear here automatically.</div>}
+   </section>
   </section>
   <aside className='operator-workstation-side'>
    <section className='operator-plan-progress-card'>
@@ -848,10 +860,10 @@ export default function App({user}){
     <div className='operator-progress-numbers'><div><span>Scanned</span><strong>{scannedSerials.length.toLocaleString()}</strong></div><div><span>Remaining</span><strong>{pendingSerials.length.toLocaleString()}</strong></div><div><span>Target</span><strong>{Number(selectedPlan.planned_qty||0).toLocaleString()}</strong></div></div>
    </section>
    <div className='operator-workstation-metrics'>
-    <div className='operator-workstation-metric metric-planned'><span>PLANNED QTY</span><strong>{Number(selectedPlan.planned_qty||0).toLocaleString()}</strong><small>Units for this plan</small></div>
-    <div className='operator-workstation-metric metric-scanned'><span>SCANNED</span><strong>{scannedSerials.length.toLocaleString()}</strong><small>{selectedPlan.planned_qty?Math.round(scannedSerials.length/Number(selectedPlan.planned_qty)*100):0}% complete</small></div>
-    <div className='operator-workstation-metric metric-pending'><span>REMAINING</span><strong>{pendingSerials.length.toLocaleString()}</strong><small>Labels not yet scanned</small></div>
-    <div className='operator-workstation-metric metric-duplicates'><span>DUPLICATE SCANS</span><strong>{duplicateScans.length.toLocaleString()}</strong><small>Duplicate scan events</small></div>
+    <button type='button' className='operator-workstation-metric metric-planned' onClick={()=>{setDetailsPanel('planned');setDetailsSearch('');}}><span>PLANNED QTY</span><strong>{Number(selectedPlan.planned_qty||0).toLocaleString()}</strong><small>Click to view all planned serials</small></button>
+    <button type='button' className='operator-workstation-metric metric-scanned' onClick={()=>{setDetailsPanel('scanned');setDetailsSearch('');}}><span>SCANNED QTY</span><strong>{scannedSerials.length.toLocaleString()}</strong><small>Click to view scanned serials</small></button>
+    <button type='button' className='operator-workstation-metric metric-pending' onClick={()=>{setDetailsPanel('remaining');setDetailsSearch('');}}><span>REMAINING QTY</span><strong>{pendingSerials.length.toLocaleString()}</strong><small>Click to view remaining serials</small></button>
+    <button type='button' className='operator-workstation-metric metric-duplicates' onClick={()=>{setDetailsPanel('duplicates');setDetailsSearch('');}}><span>DUPLICATE SCANS</span><strong>{duplicateScans.length.toLocaleString()}</strong><small>Click to view duplicate attempts</small></button>
    </div>
    <section className='operator-shift-info'>
     <div><span>SHIFT WINDOW</span><strong>{planShiftLabel(selectedPlan)}</strong></div>
@@ -859,8 +871,19 @@ export default function App({user}){
     <div><span>PLAN STATUS</span><strong className={'operator-status-text status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</strong></div>
    </section>
   </aside>
- </section>:<section className='operator-workstation-empty'><span className='operator-empty-icon'>⌗</span><strong>{selectedPlan?'Confirm the production assignment':'Select today’s production plan to begin'}</strong><span>The clock remains visible. Once a plan is selected, the camera and production status fill this screen automatically.</span></section>}
+ </section>:<section className='operator-workstation-empty'><span className='operator-empty-icon'>⌗</span><strong>{selectedPlan?'Confirm the production assignment':'Select today’s production plan to begin'}</strong><span>The clock remains visible. Once a plan is selected, the 2D barcode scanner and production status fill this screen automatically.</span></section>}
 </main>}
-{duplicateWarning&&<div className='warning-backdrop' role='alertdialog' aria-modal='true' aria-labelledby='duplicate-warning-title'><section className='warning-dialog'><div className='warning-symbol'>!</div><span className='eyebrow'>OPERATOR ATTENTION REQUIRED</span><h2 id='duplicate-warning-title'>Duplicate serial detected</h2><p>This serial has already been scanned for the selected production plan. Do not apply the same label again.</p><div className='warning-serial'><span>Serial number</span><b>{duplicateWarning.serial_number}</b><span>Label number</span><b>{duplicateWarning.label_number}</b></div><p className='warning-time'>Detected: {new Date(duplicateWarning.detected_at).toLocaleString('en-IN')}</p><p className='warning-auto-dismiss'>This warning clears automatically. Continue scanning after the alert closes.</p></section></div>}
+{detailsPanel&&<div className='operator-detail-backdrop' role='presentation' onMouseDown={event=>{if(event.target===event.currentTarget){setDetailsPanel('');setDetailsSearch('');}}}><section className='operator-detail-dialog' role='dialog' aria-modal='true' aria-labelledby='operator-detail-title'>
+ <header className='operator-detail-header'><div><span className='eyebrow'>PRODUCTION SERIAL DETAILS</span><h2 id='operator-detail-title'>{{planned:'Planned quantity',scanned:'Scanned quantity',remaining:'Remaining quantity',duplicates:'Duplicate scans'}[detailsPanel]}</h2><p>{selectedPlan?.production_line} · {selectedPlan?.product_name} · {planShiftLabel(selectedPlan)}</p></div><button type='button' className='operator-detail-close' aria-label='Close details' onClick={()=>{setDetailsPanel('');setDetailsSearch('');}}>×</button></header>
+ <div className='operator-detail-tools'><label>Search serial, label, status or time<input value={detailsSearch} onChange={event=>setDetailsSearch(event.target.value)} placeholder='Type to filter this list'/></label><span><strong>{detailRows.length.toLocaleString()}</strong> record{detailRows.length===1?'':'s'}</span></div>
+ <div className='operator-detail-table-wrap'><table className='operator-detail-table'><thead><tr>{detailsPanel==='duplicates'?<><th>Serial number</th><th>Label</th><th>Duplicate time</th><th>Operator</th><th>Line</th></>:<><th>Seq.</th><th>Label number</th><th>Serial number</th><th>Status</th><th>Scan time</th><th>Scanned by</th></>}</tr></thead><tbody>
+ {detailRows.length?detailRows.map((row,index)=><tr key={row.id||row.serial_number+'-'+index}>
+ {detailsPanel==='duplicates'?<><td><strong>{row.serial_number||'—'}</strong></td><td>{row.label_number||'—'}</td><td>{row.scanned_at?new Date(row.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{row.operator_name||'—'}</td><td>{row.production_line||'—'}</td></>:<><td>{row.sequence_no??index+1}</td><td>{row.label_number||'—'}</td><td><strong>{row.serial_number||'—'}</strong></td><td><span className={'operator-detail-status status-'+(row.status||'pending')}>{String(row.status||'pending').toUpperCase()}</span></td><td>{row.scanned_at?new Date(row.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{row.scanned_by||'—'}</td></>}
+ </tr>):<tr><td colSpan={detailsPanel==='duplicates'?5:6} className='operator-detail-empty'>{detailsPanel==='duplicates'?'No duplicate events match your search.':'No serial records match your search.'}</td></tr>}
+ </tbody></table></div>
+ <footer className='operator-detail-footer'><span>All times are shown in your browser’s local time zone.</span><button type='button' onClick={()=>{setDetailsPanel('');setDetailsSearch('');}}>Close</button></footer>
+</section></div>}
+{duplicateWarning&&<div className='duplicate-scan-toast' role='status'><span>!</span><div><strong>Duplicate serial detected</strong><small>{duplicateWarning.serial_number} · Label {duplicateWarning.label_number} · Alert clears automatically</small></div></div>}
+
  </div>
 }
