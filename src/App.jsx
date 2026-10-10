@@ -93,7 +93,7 @@ export default function App({user}){
  const [newUserRole,setNewUserRole]=useState('operator');
  const [setupCredential,setSetupCredential]=useState(null); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',date_from:'',date_to:'',month:'all'}); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>createHourlyTargets()); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
+ const operator='Operator'; const [camera,setCamera]=useState(false); const videoRef=useRef(null); const readerRef=useRef(null); const scanRef=useRef(null); const scanInFlightRef=useRef(false); const cameraLastCodeRef=useRef(''); const lastScanRef=useRef({value:'',at:0}); const [operatorFilters,setOperatorFilters]=useState({production_line:'',brand:'',product_name:''}); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>createHourlyTargets()); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringEvents,setMonitoringEvents]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false);
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -257,9 +257,11 @@ export default function App({user}){
   (reportFilters.brand==='all'||plan.brand===reportFilters.brand)&&
   (reportFilters.model==='all'||plan.model===reportFilters.model)&&
   (reportFilters.production_line==='all'||plan.production_line===reportFilters.production_line)&&
+  (reportFilters.status==='all'||plan.status===reportFilters.status)&&
   (!reportFilters.date_from||plan.production_date>=reportFilters.date_from)&&
   (!reportFilters.date_to||plan.production_date<=reportFilters.date_to)&&
-  (reportFilters.month==='all'||(plan.production_date||'').slice(0,7)===reportFilters.month)
+  (reportFilters.month==='all'||(plan.production_date||'').slice(0,7)===reportFilters.month)&&
+  (!reportFilters.search||[plan.product_name,plan.brand,plan.model,plan.production_line,plan.id].join(' ').toLowerCase().includes(reportFilters.search.trim().toLowerCase()))
  ),[plans,reportFilters]);
  const dashboardHourlyPlan=useMemo(()=>activePlans.find(plan=>plan.id===dashboardHourlyPlanId)||activePlans[0]||null,[activePlans,dashboardHourlyPlanId]);
  const activeHourlySummary=useMemo(()=>{
@@ -285,50 +287,93 @@ export default function App({user}){
   return [...buckets.values()].sort((a,b)=>a.hour.localeCompare(b.hour));
  },[dashboardHourlyPlan,monitoringSerials]);
  const activeHourlyMax=useMemo(()=>Math.max(1,...activeHourlySummary.flatMap(row=>[row.planned_qty,row.actual_qty])),[activeHourlySummary]);
- const reportRows=useMemo(()=>{
-  if(reportFilters.type==='hourly'){
-   const output=[];
-   for(const plan of filteredReportPlans){
-    const buckets=new Map();
-    for(const target of Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]){
-     const hour=String(target.hour||'').slice(0,5);if(!/^\d{2}:\d{2}$/.test(hour))continue;
-     buckets.set(hour,{hour,planned_qty:Number(target.planned_qty||0),actual_scanned:0});
-    }
-    for(const serial of monitoringSerials){
-     if(serial.plan_id!==plan.id||serial.status!=='scanned'||!serial.scanned_at)continue;
-     const timestamp=new Date(serial.scanned_at);if(localDateKey(timestamp)!==plan.production_date)continue;
-     const shift=getPlanShiftWindow(plan);
-     if(!shift)continue;
-     const scannedMinutes=getLocalMinutes(timestamp);
-     if(scannedMinutes<shift.start||scannedMinutes>=shift.end)continue;
-     const slotMinutes=shift.start+Math.floor((scannedMinutes-shift.start)/60)*60;
-     const hour=String(Math.floor(slotMinutes/60)).padStart(2,'0')+':'+String(slotMinutes%60).padStart(2,'0');
-     const row=buckets.get(hour)||{hour,planned_qty:0,actual_scanned:0};row.actual_scanned+=1;buckets.set(hour,row);
-    }
-    for(const row of buckets.values())output.push({product:plan.product_name,brand:plan.brand||'',model:plan.model,date:plan.production_date,month:(plan.production_date||'').slice(0,7),line:plan.production_line,status:plan.status,hour:getHourlySlotLabel(row.hour),planned_qty:row.planned_qty,actual_scanned:row.actual_scanned,variance:row.actual_scanned-row.planned_qty});
+ const downloadFullPlanReport=async plan=>{
+  if(!plan||reportDownloadPlanId)return;
+  setReportDownloadPlanId(plan.id);setReportDownloadMessage('');setReportDownloadError('');
+  try{
+   const [serialResult,eventResult]=await Promise.all([
+    fetchAllRows((from,to)=>supabase.from('plan_serials').select('id,plan_id,serial_number_id,label_number,serial_number,sequence_no,status,scanned_at,scanned_by,created_at').eq('plan_id',plan.id).order('sequence_no',{ascending:true}).range(from,to)),
+    fetchAllRows((from,to)=>supabase.from('scan_events').select('id,plan_id,serial_number_id,serial_number,operator_name,production_line,scan_status,scanned_at').eq('plan_id',plan.id).order('scanned_at',{ascending:true}).order('id',{ascending:true}).range(from,to))
+   ]);
+   if(serialResult.error)throw new Error('Could not load all allocated serials: '+serialResult.error.message);
+   if(eventResult.error)throw new Error('Could not load complete scan event history: '+eventResult.error.message);
+   const serials=serialResult.data||[],events=eventResult.data||[];
+   const scannedCount=serials.filter(row=>row.status==='scanned').length;
+   const pendingCount=serials.filter(row=>row.status==='pending').length;
+   const plannedQty=Number(plan.planned_qty||0);
+   const completion=plannedQty?Math.round(scannedCount/plannedQty*100):0;
+   const formatIST=value=>value?new Date(value).toLocaleString('sv-SE',{timeZone:'Asia/Kolkata',hour12:false}):'';
+   const exportedAt=formatIST(new Date().toISOString());
+   const norm=value=>String(value||'').trim().toUpperCase();
+   const eventsBySerial=new Map();
+   for(const event of events){
+    const key=norm(event.serial_number);
+    if(!key)continue;
+    if(!eventsBySerial.has(key))eventsBySerial.set(key,[]);
+    eventsBySerial.get(key).push(event);
    }
-   return output.sort((a,b)=>(a.date+' '+a.line+' '+a.hour).localeCompare(b.date+' '+b.line+' '+b.hour));
+   const serialKeys=new Set();
+   const headers=[
+    'Record Type','Exported At (IST)','Plan ID','Production Date','Brand','Product','Model','Production Line','Plan Status','Planned Quantity','Allocated Serials','Actual Scanned','Pending Serials','Completion Percent','Plan Created At (IST)','Hourly Targets JSON',
+    'Serial Sequence','Label Number','Serial Number','Serial Status','Serial Scanned At (IST)','Scanned By','Serial Record Created At (IST)',
+    'Scan Event ID','Scan Event Status','Scan Event Time (IST)','Scan Event Operator','Scan Event Production Line','Serial Number ID'
+   ];
+   const common={
+    'Exported At (IST)':exportedAt,'Plan ID':plan.id,'Production Date':plan.production_date||'',
+    'Brand':plan.brand||'','Product':plan.product_name||'','Model':plan.model||'',
+    'Production Line':plan.production_line||'','Plan Status':plan.status||'',
+    'Planned Quantity':plannedQty,'Allocated Serials':serials.length,'Actual Scanned':scannedCount,
+    'Pending Serials':pendingCount,'Completion Percent':completion,
+    'Plan Created At (IST)':formatIST(plan.created_at),
+    'Hourly Targets JSON':JSON.stringify(Array.isArray(plan.hourly_targets)?plan.hourly_targets:plan.hourly_targets||[])
+   };
+   const exportRows=[];
+   const appendRow=(recordType,serial={},event={})=>{
+    exportRows.push(headers.map(header=>{
+     const base=common[header];
+     if(base!==undefined)return base;
+     const values={
+      'Record Type':recordType,
+      'Serial Sequence':serial.sequence_no??'',
+      'Label Number':serial.label_number??'',
+      'Serial Number':serial.serial_number??event.serial_number??'',
+      'Serial Status':serial.status??(event.scan_status==='missing'?'not allocated in plan':''),
+      'Serial Scanned At (IST)':formatIST(serial.scanned_at),
+      'Scanned By':serial.scanned_by??'',
+      'Serial Record Created At (IST)':formatIST(serial.created_at),
+      'Scan Event ID':event.id??'',
+      'Scan Event Status':event.scan_status??'',
+      'Scan Event Time (IST)':formatIST(event.scanned_at),
+      'Scan Event Operator':event.operator_name??'',
+      'Scan Event Production Line':event.production_line??'',
+      'Serial Number ID':serial.serial_number_id??event.serial_number_id??''
+     };
+     return values[header]??'';
+    }));
+   };
+   for(const serial of serials){
+    const key=norm(serial.serial_number);
+    if(key)serialKeys.add(key);
+    const matches=eventsBySerial.get(key)||[];
+    if(matches.length)for(const event of matches)appendRow('Serial + scan event',serial,event);
+    else appendRow('Allocated serial',serial,{});
+   }
+   for(const event of events){
+    const key=norm(event.serial_number);
+    if(!key||serialKeys.has(key))continue;
+    appendRow('Scan event not linked to allocated serial',{},event);
+   }
+   if(!exportRows.length)appendRow('Plan summary only',{},{});
+   const slug=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+   const filename=['pro-scan-full-plan',slug(plan.production_line),slug(plan.product_name),slug(plan.model),plan.production_date||'undated'].filter(Boolean).join('-')+'.csv';
+   downloadCsv(filename,headers,exportRows);
+   setReportDownloadMessage('Downloaded '+exportRows.length.toLocaleString()+' detailed row(s) for '+(plan.product_name||'this plan')+'.');
+  }catch(error){
+   setReportDownloadError(error?.message||'Could not create the full plan report.');
+  }finally{
+   setReportDownloadPlanId('');
   }
-  const detailed=filteredReportPlans.map(plan=>{
-   const units=monitoringSerials.filter(row=>row.plan_id===plan.id);
-   const actual=units.filter(row=>row.status==='scanned').length,target=Number(plan.planned_qty||0);
-   return {product:plan.product_name,brand:plan.brand||'',model:plan.model,date:plan.production_date,month:(plan.production_date||'').slice(0,7),line:plan.production_line,status:plan.status,planned_qty:target,actual_scanned:actual,pending:Math.max(0,target-actual),completion_percent:target?Math.round(actual/target*100):0};
-  });
-  if(reportFilters.group_by==='none')return detailed;
-  const labelByKey={product:'product',brand:'brand',model:'model',date:'date',month:'month',line:'line'};
-  const key=labelByKey[reportFilters.group_by];const groups=new Map();
-  for(const row of detailed){const value=String(row[key]||'Unspecified');const group=groups.get(value)||{group_by:reportFilters.group_by,group_value:value,plans:0,planned_qty:0,actual_scanned:0,pending:0};group.plans+=1;group.planned_qty+=row.planned_qty;group.actual_scanned+=row.actual_scanned;group.pending+=row.pending;groups.set(value,group);}
-  return [...groups.values()].map(group=>({...group,completion_percent:group.planned_qty?Math.round(group.actual_scanned/group.planned_qty*100):0})).sort((a,b)=>a.group_value.localeCompare(b.group_value));
- },[reportFilters,filteredReportPlans,monitoringSerials]);
- const downloadProductionReport=()=>{
-  if(!reportRows.length)return;
-  const headers=Object.keys(reportRows[0]);
-  const rows=reportRows.map(row=>headers.map(header=>row[header]??''));
-  const reportType=reportFilters.type==='hourly'?'hourly':'production';
-  downloadCsv('pro-scan-'+reportType+'-report-'+localDateKey(new Date())+'.csv',headers,rows);
  };
-
-
  const hourlyTargetTotal=useMemo(()=>hourlyTargets.reduce((sum,row)=>sum+Math.max(0,Number(row.planned_qty||0)),0),[hourlyTargets]);
  const selectedLinePlans=useMemo(()=>activePlans.filter(plan=>plan.production_line===selectedMonitoringLine),[activePlans,selectedMonitoringLine]);
  const selectedHourlyPlan=useMemo(()=>selectedLinePlans.find(plan=>plan.id===selectedMonitoringPlanId)||selectedLinePlans[0]||null,[selectedLinePlans,selectedMonitoringPlanId]);
@@ -654,24 +699,39 @@ export default function App({user}){
  <div className='management-footnote'><span>Plan status changes apply to operator selection and live monitoring.</span><span>Last refreshed: {monitoringUpdatedAt?monitoringUpdatedAt.toLocaleTimeString('en-IN'):'Loading…'}</span></div>
 </main>}
  {view==='reports'&&<main className='reports-page'>
- <section className='reports-title-bar'><div><span className='eyebrow'>PRODUCTION ANALYTICS</span><h2>Production reports</h2><p>Filter production by product, brand, model, date, month, and line. Download a summary or hourly CSV that opens in Excel.</p></div><button onClick={()=>setReportFilters({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',date_from:'',date_to:'',month:'all'})}>Reset filters</button></section>
- <section className='panel report-filter-panel'><div className='report-type-switch'><label>Report type<select value={reportFilters.type} onChange={e=>setReportFilters({...reportFilters,type:e.target.value})}><option value='summary'>Production summary</option><option value='hourly'>Hourly production</option></select></label>
- {reportFilters.type==='summary'&&<label>Group report by<select value={reportFilters.group_by} onChange={e=>setReportFilters({...reportFilters,group_by:e.target.value})}><option value='none'>Detailed plan rows</option><option value='product'>Product-wise</option><option value='brand'>Brand-wise</option><option value='model'>Model-wise</option><option value='date'>Date-wise</option><option value='month'>Month-wise</option><option value='line'>Production line-wise</option></select></label>}
- <div className='report-row-count'><strong>{filteredReportPlans.length.toLocaleString()}</strong><span>matching production plans</span></div></div>
- <div className='report-filter-grid'>
-  <label>Product<select value={reportFilters.product_name} onChange={e=>setReportFilters({...reportFilters,product_name:e.target.value})}><option value='all'>All products</option>{reportProductOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
-  <label>Brand<select value={reportFilters.brand} onChange={e=>setReportFilters({...reportFilters,brand:e.target.value})}><option value='all'>All brands</option>{reportBrandOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
-  <label>Model<select value={reportFilters.model} onChange={e=>setReportFilters({...reportFilters,model:e.target.value})}><option value='all'>All models</option>{reportModelOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
-  <label>Production line<select value={reportFilters.production_line} onChange={e=>setReportFilters({...reportFilters,production_line:e.target.value})}><option value='all'>All lines</option>{reportLineOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
-  <label>Month<select value={reportFilters.month} onChange={e=>setReportFilters({...reportFilters,month:e.target.value})}><option value='all'>All months</option>{reportMonthOptions.map(value=><option value={value} key={value}>{new Date(value+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option>)}</select></label>
-  <label>From date<input type='date' value={reportFilters.date_from} onChange={e=>setReportFilters({...reportFilters,date_from:e.target.value})}/></label>
-  <label>To date<input type='date' value={reportFilters.date_to} onChange={e=>setReportFilters({...reportFilters,date_to:e.target.value})}/></label>
- </div>
- <div className='report-actions'><div><strong>{reportRows.length.toLocaleString()}</strong><span>{reportFilters.type==='hourly'?'hourly records':'report rows'} ready to export</span></div><button className='primary' disabled={!reportRows.length} onClick={downloadProductionReport}>↓ Download {reportFilters.type==='hourly'?'Hourly':'Production'} CSV</button></div>
+ <section className='reports-title-bar'><div><span className='eyebrow'>PRODUCTION ANALYTICS</span><h2>Production reports</h2><p>Filter production plans and download the complete serial and scan-event history for any matching plan.</p></div><button className='report-reset-button' onClick={()=>{setReportFilters({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'});setReportDownloadMessage('');setReportDownloadError('');}}>Reset filters</button></section>
+ <section className='report-filter-panel'>
+  <div className='report-filter-heading'><div><span className='eyebrow'>FIND PRODUCTION PLANS</span><h3>Filters</h3></div><span className='report-matching-count'><strong>{filteredReportPlans.length.toLocaleString()}</strong> matching plan{filteredReportPlans.length===1?'':'s'}</span></div>
+  <div className='report-search-row'><label className='report-search-field'>Search product, model, line or plan ID<input type='search' value={reportFilters.search||''} onChange={e=>setReportFilters({...reportFilters,search:e.target.value})} placeholder='Search by product, model, line, or plan ID'/></label></div>
+  <div className='report-filter-grid'>
+   <label>Product<select value={reportFilters.product_name} onChange={e=>setReportFilters({...reportFilters,product_name:e.target.value})}><option value='all'>All products</option>{reportProductOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
+   <label>Brand<select value={reportFilters.brand} onChange={e=>setReportFilters({...reportFilters,brand:e.target.value})}><option value='all'>All brands</option>{reportBrandOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
+   <label>Model<select value={reportFilters.model} onChange={e=>setReportFilters({...reportFilters,model:e.target.value})}><option value='all'>All models</option>{reportModelOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
+   <label>Production line<select value={reportFilters.production_line} onChange={e=>setReportFilters({...reportFilters,production_line:e.target.value})}><option value='all'>All lines</option>{reportLineOptions.map(value=><option value={value} key={value}>{value}</option>)}</select></label>
+   <label>Plan status<select value={reportFilters.status||'all'} onChange={e=>setReportFilters({...reportFilters,status:e.target.value})}><option value='all'>All statuses</option><option value='draft'>Draft</option><option value='active'>Active</option><option value='completed'>Completed</option><option value='cancelled'>Cancelled</option></select></label>
+   <label>Month<select value={reportFilters.month} onChange={e=>setReportFilters({...reportFilters,month:e.target.value})}><option value='all'>All months</option>{reportMonthOptions.map(value=><option value={value} key={value}>{new Date(value+'-01T00:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option>)}</select></label>
+   <label>From date<input type='date' value={reportFilters.date_from} onChange={e=>setReportFilters({...reportFilters,date_from:e.target.value})}/></label>
+   <label>To date<input type='date' value={reportFilters.date_to} onChange={e=>setReportFilters({...reportFilters,date_to:e.target.value})}/></label>
+  </div>
+  {(reportDownloadMessage||reportDownloadError)&&<div className={reportDownloadError?'report-download-notice report-download-error':'report-download-notice'}>{reportDownloadError||reportDownloadMessage}</div>}
  </section>
- <section className='panel report-preview-panel'><div className='panel-head'><div><span className='eyebrow'>REPORT PREVIEW</span><h3>{reportFilters.type==='hourly'?'Hourly production details':reportFilters.group_by==='none'?'Production plan details':reportFilters.group_by.charAt(0).toUpperCase()+reportFilters.group_by.slice(1)+'-wise production summary'}</h3></div><span className='refresh-caption'>Previewing first 50 rows</span></div>
- {reportRows.length?<div className='report-table-wrap'><table className='report-preview-table'><thead><tr>{Object.keys(reportRows[0]).map(key=><th key={key}>{key.replace(/_/g,' ')}</th>)}</tr></thead><tbody>{reportRows.slice(0,50).map((row,index)=><tr key={index}>{Object.keys(reportRows[0]).map(key=><td key={key}>{String(row[key]??'')}</td>)}</tr>)}</tbody></table></div>:<div className='empty'>No production records match these filters yet.</div>}
- <div className='report-preview-footnote'>The download contains all matching rows, not just the preview. Hourly target values are available only for plans created with hourly scheduling enabled.</div>
+ <section className='report-results-panel'>
+  <div className='report-results-heading'><div><span className='eyebrow'>MATCHING RESULTS</span><h3>Production plans</h3><p>Each download contains every serial allocated to that plan and its scan attempts, including timestamps and operator details.</p></div><span className='report-results-total'>{filteredReportPlans.length.toLocaleString()} result{filteredReportPlans.length===1?'':'s'}</span></div>
+  {filteredReportPlans.length?<div className='report-results-table-wrap'><table className='report-results-table'><thead><tr><th>Production date</th><th>Product / model</th><th>Line</th><th>Progress</th><th>Status</th><th>Full report</th></tr></thead><tbody>{filteredReportPlans.map(plan=>{
+   const planSerials=monitoringSerials.filter(row=>row.plan_id===plan.id);
+   const scanned=planSerials.filter(row=>row.status==='scanned').length;
+   const planned=Number(plan.planned_qty||0);
+   const pending=planSerials.filter(row=>row.status==='pending').length;
+   const percent=planned?Math.round(scanned/planned*100):0;
+   return <tr key={plan.id}>
+    <td><strong>{plan.production_date||'—'}</strong><small>{new Date((plan.production_date||'2000-01-01')+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</small></td>
+    <td><div className='report-product-name'>{plan.product_name||'—'}</div><small>{plan.brand||'Unspecified'} · {plan.model||'No model'}</small><small className='report-plan-id'>Plan ID: {plan.id}</small></td>
+    <td><span className='report-line-pill'>{plan.production_line||'Unassigned'}</span></td>
+    <td><div className='report-progress-cell'><div className='report-progress-track'><span style={{width:Math.min(100,percent)+'%'}}/></div><div><strong>{scanned.toLocaleString()}</strong> scanned <span>· {pending.toLocaleString()} pending</span></div><small>{percent}% of {planned.toLocaleString()} planned</small></div></td>
+    <td><span className={'plan-status-badge status-'+(plan.status||'draft')}>{plan.status||'draft'}</span></td>
+    <td><button className='report-download-button' disabled={!!reportDownloadPlanId} onClick={()=>void downloadFullPlanReport(plan)}>{reportDownloadPlanId===plan.id?'Preparing report…':<><span aria-hidden='true'>↓</span> Download full report</>}</button></td>
+   </tr>;
+  })}</tbody></table></div>:<div className='report-empty-state'><span className='report-empty-icon'>⌕</span><strong>No production plans match these filters</strong><span>Change or reset one or more filters to see matching plans.</span></div>}
  </section>
 </main>}
  {view==='plans'&&<main><section className='panel'><div className='panel-head'><h2>Plan created</h2><button onClick={()=>setView('dashboard')}>Dashboard</button></div><div className='success'>Production plan is saved as Draft. Open Operator and select this plan during its scheduled shift. It becomes Active only during the shift window.</div></section></main>}
