@@ -76,7 +76,7 @@ Deno.serve(async (request: Request) => {
     if (action === "register") {
       const email = String(body?.email ?? "").trim().toLowerCase();
       const password = String(body?.password ?? "");
-      if (!email || email.length > 320 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return json({ error: "Enter a valid company email address." });
       }
       if (password.length < 10 || password.length > 200) {
@@ -162,7 +162,7 @@ Deno.serve(async (request: Request) => {
         const email = String(body?.email ?? "").trim().toLowerCase();
         const role = String(body?.role ?? "");
         const password = String(body?.password ?? "");
-        if (!email || email.length > 320 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+        if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           return json({ error: "Enter a valid company email address." });
         }
         if (!allowedAppRoles.has(role) || role === "pending") return json({ error: "Choose an access role." });
