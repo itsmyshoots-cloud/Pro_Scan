@@ -840,8 +840,8 @@ export default function App({user}){
   </div>
  </section>
  {selectedPlan&&!showPlanSetup?<section className='operator-workstation-grid'>
-  <section className='operator-camera-panel operator-hardware-panel'>
-   <div className='operator-camera-heading'><div><span>2D BARCODE SCANNER</span><small>Scan QR codes with your connected hardware scanner</small></div><span className={scannerReady?'operator-camera-live':'operator-camera-wait'}><i/> {scannerReady?'SCANNER READY':'WAITING FOR SHIFT'}</span></div>
+  <section className='operator-scan-input-panel'>
+   <div className='operator-hardware-heading'><div><span>2D BARCODE SCANNER</span><small>Scan QR codes with your connected hardware scanner</small></div><span className={scannerReady?'operator-hardware-ready':'operator-hardware-wait'}><i/> {scannerReady?'SCANNER READY':'WAITING FOR SHIFT'}</span></div>
    <label className='hardware-scanner-entry'><span>SCANNER INPUT</span><input ref={scannerInputRef} autoComplete='off' autoCorrect='off' spellCheck={false} inputMode='none' value={scannerInputValue} onChange={e=>setScannerInputValue(e.target.value)} onKeyDown={event=>{
     if(event.key==='Enter'||event.key==='Tab'){
      event.preventDefault();const code=event.currentTarget.value;event.currentTarget.value='';setScannerInputValue('');enqueueScannerValue(code);
