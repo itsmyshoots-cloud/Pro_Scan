@@ -125,6 +125,8 @@ export default function App({user}){
   const initialView=user?.role==='operator'?'operator':'dashboard';
   viewHistoryRef.current=[initialView];
   window.history.pushState({proScanApp:true,view:initialView},'',window.location.href);
+  // Keep a same-document guard behind the initial view so Back cannot leave the app.
+  window.history.pushState({proScanApp:true,view:initialView,guard:true},'',window.location.href);
   const handleBack=()=>{
    const stack=viewHistoryRef.current;
    if(stack.length>1){stack.pop();suppressViewHistoryRef.current=true;setView(stack[stack.length-1]);}
