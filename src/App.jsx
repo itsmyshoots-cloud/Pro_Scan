@@ -120,6 +120,25 @@ export default function App({user}){
  const isOperatorUser = user?.role === 'operator';
  const isSuperAdmin = user?.role === 'super_admin';
  const [view,setView]=useState(user?.role==='operator'?'operator':'dashboard');
+ const viewHistoryRef=useRef([]); const suppressViewHistoryRef=useRef(false);
+ useEffect(()=>{
+  const initialView=user?.role==='operator'?'operator':'dashboard';
+  viewHistoryRef.current=[initialView];
+  window.history.pushState({proScanApp:true,view:initialView},'',window.location.href);
+  const handleBack=()=>{
+   const stack=viewHistoryRef.current;
+   if(stack.length>1){stack.pop();suppressViewHistoryRef.current=true;setView(stack[stack.length-1]);}
+   else window.history.pushState({proScanApp:true,view:initialView},'',window.location.href);
+  };
+  window.addEventListener('popstate',handleBack);
+  return()=>window.removeEventListener('popstate',handleBack);
+ },[]);
+ useEffect(()=>{
+  if(suppressViewHistoryRef.current){suppressViewHistoryRef.current=false;return;}
+  const stack=viewHistoryRef.current;
+  if(!stack.length){stack.push(view);return;}
+  if(stack[stack.length-1]!==view){stack.push(view);window.history.pushState({proScanApp:true,view},'',window.location.href);}
+ },[view]);
  const [roleUsers,setRoleUsers]=useState([]);
  const [usersLoading,setUsersLoading]=useState(false);
  const [usersBusy,setUsersBusy]=useState(false);
@@ -299,6 +318,12 @@ export default function App({user}){
   if(!query)return rows;
   return rows.filter(row=>[row.serial_number,row.label_number,row.sequence_no,row.status,row.scanned_by,row.operator_name,row.production_line,row.scanned_at,row.created_at].some(value=>String(value??'').toLowerCase().includes(query)));
  },[detailsPanel,planSerials,scannedSerials,pendingSerials,duplicateScans,detailsSearch]);
+ useEffect(()=>{
+  if(!detailsPanel)return;
+  const onKeyDown=event=>{if(event.key==='Escape'){event.preventDefault();setDetailsPanel('');setDetailsSearch('');}};
+  window.addEventListener('keydown',onKeyDown);
+  return()=>window.removeEventListener('keydown',onKeyDown);
+ },[detailsPanel]);
  const activePlanIds=useMemo(()=>new Set(activePlans.map(plan=>plan.id)),[activePlans]);
  const activePlanSerials=useMemo(()=>monitoringSerials.filter(row=>activePlanIds.has(row.plan_id)),[monitoringSerials,activePlanIds]);
  const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0),[activePlans]);
