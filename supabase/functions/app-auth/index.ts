@@ -62,11 +62,7 @@ async function getAppUserForRequest(request: Request) {
   return { user, status: 200, error: "" };
 }
 
-function newSetupCode(): string {
-  return randomToken(18);
-}
-
-const allowedAppRoles = new Set(["super_admin", "planner", "operator"]);
+const allowedAppRoles = new Set(["pending", "super_admin", "planner", "operator"]);
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -77,31 +73,36 @@ Deno.serve(async (request: Request) => {
     const body = await request.json();
     const action = String(body?.action ?? "");
 
-    if (action === "setup") {
+    if (action === "register") {
       const email = String(body?.email ?? "").trim().toLowerCase();
-      const setupCode = String(body?.setupCode ?? "").trim();
       const password = String(body?.password ?? "");
-      if (!email || !setupCode || !password) return json({ error: "Enter your email, setup code, and new password." });
-      if (password.length < 10 || password.length > 200) return json({ error: "Choose a password between 10 and 200 characters." });
-
-      const { data: user, error } = await db.from("app_users")
-        .select("id,email,role,setup_token_hash,password_hash,is_active")
-        .eq("email", email).maybeSingle();
-      if (error) throw error;
-      if (!user || !user.is_active || user.password_hash || !user.setup_token_hash) {
-        return json({ error: "Password setup is unavailable for this account. Contact your administrator." });
+      if (!email || email.length > 320 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+        return json({ error: "Enter a valid company email address." });
       }
-      const suppliedHash = await sha256Hex(setupCode);
-      if (!safeEqual(suppliedHash, user.setup_token_hash)) return json({ error: "The setup code is invalid or has already been used." });
-
+      if (password.length < 10 || password.length > 200) {
+        return json({ error: "Choose a password between 10 and 200 characters." });
+      }
+      const { data: existing, error: existingError } = await db.from("app_users")
+        .select("id").eq("email", email).maybeSingle();
+      if (existingError) throw existingError;
+      if (existing) return json({ error: "An account already exists for this email address. Please sign in or contact the Super Admin." });
       const passwordHash = await bcrypt.hash(password, 12);
-      const { data: changed, error: updateError } = await db.from("app_users")
-        .update({ password_hash: passwordHash, setup_token_hash: null, updated_at: new Date().toISOString() })
-        .eq("id", user.id).eq("setup_token_hash", suppliedHash).is("password_hash", null)
-        .select("id").maybeSingle();
-      if (updateError) throw updateError;
-      if (!changed) return json({ error: "Password setup code has already been used. Try signing in." });
-      return json({ ok: true, message: "Password created. You can now sign in." });
+      const { error: registerError } = await db.from("app_users").insert({
+        email,
+        role: "pending",
+        is_active: true,
+        password_hash: passwordHash,
+        setup_token_hash: null,
+      });
+      if (registerError) {
+        if (registerError.code === "23505") return json({ error: "An account already exists for this email address. Please sign in." });
+        throw registerError;
+      }
+      return json({
+        ok: true,
+        pending: true,
+        message: "Registration complete. Your account is waiting for the Super Admin to assign a role. Sign in after your access is approved.",
+      });
     }
 
     if (action === "login") {
@@ -160,25 +161,30 @@ Deno.serve(async (request: Request) => {
       if (action === "create-user") {
         const email = String(body?.email ?? "").trim().toLowerCase();
         const role = String(body?.role ?? "");
-        if (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        const password = String(body?.password ?? "");
+        if (!email || email.length > 320 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
           return json({ error: "Enter a valid company email address." });
         }
-        if (!allowedAppRoles.has(role)) return json({ error: "Choose a valid role." });
+        if (!allowedAppRoles.has(role) || role === "pending") return json({ error: "Choose an access role." });
+        if (password.length < 10 || password.length > 200) return json({ error: "Choose a password between 10 and 200 characters." });
         const { data: existing, error: existingError } = await db.from("app_users")
           .select("id").eq("email", email).maybeSingle();
         if (existingError) throw existingError;
         if (existing) return json({ error: "An account already exists for this email address." });
-        const setupCode = newSetupCode();
         const { data: created, error } = await db.from("app_users").insert({
-          email, role, is_active: true, password_hash: null, setup_token_hash: await sha256Hex(setupCode),
+          email,
+          role,
+          is_active: true,
+          password_hash: await bcrypt.hash(password, 12),
+          setup_token_hash: null,
         }).select("id,email,role,is_active,created_at").single();
         if (error) throw error;
-        return json({ user: { ...created, password_configured: false }, setupCode });
+        return json({ user: { ...created, password_configured: true } });
       }
 
       const userId = String(body?.userId ?? "");
       if (!userId) return json({ error: "User ID is required." });
-      if (userId === access.user.id) return json({ error: "You cannot change your own role, deactivate yourself, or reset your own password here." });
+      if (userId === access.user.id && action !== "reset-user-password") return json({ error: "You cannot change your own role or deactivate yourself here." });
 
       const { data: target, error: targetError } = await db.from("app_users")
         .select("id,email,role,is_active").eq("id", userId).maybeSingle();
@@ -217,16 +223,22 @@ Deno.serve(async (request: Request) => {
       }
 
       if (action === "reset-user-password") {
-        const setupCode = newSetupCode();
+        const password = String(body?.password ?? "");
+        if (password.length < 10 || password.length > 200) {
+          return json({ error: "Choose a password between 10 and 200 characters." });
+        }
+        const passwordHash = await bcrypt.hash(password, 12);
         const { error } = await db.from("app_users").update({
-          password_hash: null,
-          setup_token_hash: await sha256Hex(setupCode),
+          password_hash: passwordHash,
+          setup_token_hash: null,
           updated_at: new Date().toISOString(),
         }).eq("id", userId);
         if (error) throw error;
-        await db.from("app_auth_sessions").update({ revoked_at: new Date().toISOString() })
-          .eq("user_id", userId).is("revoked_at", null);
-        return json({ user: { id: target.id, email: target.email, role: target.role }, setupCode });
+        if (userId !== access.user.id) {
+          await db.from("app_auth_sessions").update({ revoked_at: new Date().toISOString() })
+            .eq("user_id", userId).is("revoked_at", null);
+        }
+        return json({ ok: true, message: "Password updated successfully." });
       }
     }
 
