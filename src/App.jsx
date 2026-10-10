@@ -282,7 +282,10 @@ export default function App({user}){
   ]);
   if(serialResult.error){setMessage('Could not load plan progress: '+serialResult.error.message);return;}
   if(duplicateResult.error){setMessage('Could not load duplicate scans: '+duplicateResult.error.message);return;}
-  setPlanSerials(serialResult.data||[]);
+  setPlanSerials(previous=>{
+   const newerScans=new Map(previous.filter(row=>row.status==='scanned').map(row=>[row.id,row]));
+   return (serialResult.data||[]).map(row=>{const local=newerScans.get(row.id);return local&&row.status!=='scanned'?{...row,...local}:row;});
+  });
   setDuplicateScans(duplicateResult.data||[]);
  };
  const broadcastProductionChange=(kind,planId=null,recordId=null)=>{
@@ -571,10 +574,14 @@ export default function App({user}){
    if(!shift){setScannerReady(false);setMessage('This plan has no saved shift schedule.');return;}
    if(minutes<shift.start){setScannerReady(false);setMessage('Shift has not started. Scanner will be ready at '+formatClock12(String(Math.floor(shift.start/60)).padStart(2,'0')+':'+String(shift.start%60).padStart(2,'0'))+'.');return;}
    if(minutes>=shift.end){setScannerReady(false);if(selectedPlan.status!=='completed'&&selectedPlan.status!=='cancelled')await updatePlanStatus(selectedPlan.id,'completed');setMessage('The production shift has ended. Select the next plan.');return;}
-   const lookup=supabase.from('plan_serials').select('*').eq('plan_id',selectedPlan.id);
-   const lookupQuery=/^(P-\d+|GM\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
-   const {data,error}=await lookupQuery.maybeSingle();
-   if(error){setMessage('Could not check serial '+clean+': '+error.message);return;}
+   let data=planSerials.find(row=>row.plan_id===selectedPlan.id&&(String(row.serial_number||'').toUpperCase()===clean||String(row.label_number||'').toUpperCase()===clean))||null;
+   if(!data){
+    const lookup=supabase.from('plan_serials').select('*').eq('plan_id',selectedPlan.id);
+    const lookupQuery=/^(P-\\d+|GM\\d+)$/i.test(clean)?lookup.or('serial_number.eq.'+clean+',label_number.eq.'+clean):lookup.eq('serial_number',clean);
+    const result=await lookupQuery.maybeSingle();
+    if(result.error){setMessage('Could not check serial '+clean+': '+result.error.message);return;}
+    data=result.data;
+   }
    const recordEvent=async(status,serialValue)=>{
     const {error:eventError}=await supabase.from('scan_events').insert({serial_number:serialValue||clean,plan_id:selectedPlan.id,operator_name:operator,production_line:selectedPlan.production_line||null,scan_status:status});
     return eventError;
@@ -601,7 +608,7 @@ export default function App({user}){
    setPlanSerials(mergeScanned);setMonitoringSerials(mergeScanned);setMonitoringUpdatedAt(new Date());setLastScanAt(scannedAt);
    const successMessage='✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—');setMessage(successMessage);
    broadcastProductionChange('scan',selectedPlan.id,data.id);
-   void recordEvent('success',data.serial_number).then(eventError=>{if(eventError)setMessage(current=>current===successMessage?successMessage+' · scan event log failed':current);});
+   void recordEvent('success',data.serial_number).then(eventError=>{broadcastProductionChange('event',selectedPlan.id);if(eventError)setMessage(current=>current===successMessage?successMessage+' · scan event log failed':current);});
   }catch(error){
    setMessage('Scan failed: '+(error?.message||'Unknown error'));
   }finally{
