@@ -1086,3 +1086,37 @@ html:has(.app-operator),body:has(.app-operator),#root:has(.app-operator){height:
  .app-operator .top-actions{gap:3px!important}
  .app-operator .top-actions .nav-button{padding:4px 6px!important;font-size:9px!important}
 }
+
+
+/* Manage Production advanced filters */
+.management-advanced-filters{margin:0 0 14px;padding:16px 18px;border:1px solid #e2e8f0;border-radius:16px;background:#fff;box-shadow:0 4px 18px rgba(15,23,42,.03)}
+.management-advanced-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.management-advanced-heading>div{display:flex;flex-direction:column;gap:4px}
+.management-advanced-heading .eyebrow{font-size:9px}
+.management-advanced-heading strong{font-size:13px;color:#0f172a}
+.management-advanced-heading>button{border:1px solid #dbe4ee;border-radius:9px;padding:7px 10px;background:#fff;color:#475569;font-size:10px;font-weight:800;white-space:nowrap}
+.management-advanced-heading>button:hover{background:#f8fafc;color:#0f172a}
+.management-advanced-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.management-advanced-grid>label{display:flex;flex-direction:column;gap:5px;min-width:0;color:#475569;font-size:10px;font-weight:850}
+.management-advanced-grid input,.management-advanced-grid select{width:100%;min-width:0;height:37px;padding:7px 9px;border:1px solid #d5dee8;border-radius:9px;background:#fff;color:#0f172a;font-size:11px;font-weight:650}
+.management-filter-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 13px;padding:12px 15px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}
+.management-filter-bar>div:first-child{display:flex;align-items:baseline;gap:7px;margin-right:auto}
+.management-filter-bar>div:first-child>b{font-size:20px;color:#0f172a;font-variant-numeric:tabular-nums}
+.management-filter-bar>div:first-child>span{font-size:10px;color:#64748b}
+.management-filter-bar>label{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;color:#475569}
+.management-filter-bar select{height:35px;min-width:145px;padding:7px 9px;border:1px solid #d5dee8;border-radius:9px;background:#fff;font-size:11px}
+.management-filter-bar>button{height:35px;padding:7px 11px;border:1px solid #d5dee8;border-radius:9px;background:#fff;color:#334155;font-size:10px;font-weight:800}
+.user-registration-note{margin-bottom:14px;border-color:#bfdbfe!important;background:#f8fbff}
+.user-registration-note .user-admin-card-heading p{max-width:780px}
+.user-registration-note strong{color:#1d4ed8}
+.user-password-reset-dialog{max-width:520px;max-height:90dvh;min-height:0}
+.user-password-reset-form{display:flex;flex-direction:column;gap:12px;padding:18px 20px}
+.user-password-reset-form>p{margin:0 0 2px;color:#64748b;font-size:11px;line-height:1.5}
+.user-password-reset-form>label{display:flex;flex-direction:column;gap:6px;color:#334155;font-size:11px;font-weight:850}
+.user-password-reset-form input{width:100%;height:40px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#0f172a;font-size:13px}
+.user-password-reset-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:4px}
+.user-password-reset-actions>button{min-height:37px;padding:8px 13px;border-radius:9px;font-size:11px;font-weight:850}
+.user-password-reset-actions>.primary{border:1px solid #0f172a;background:#0f172a;color:#fff}
+.user-password-reset-actions>.user-admin-secondary{border:1px solid #d5dee8;background:#fff;color:#334155}
+@media(max-width:1000px){.management-advanced-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.management-advanced-filters{padding:12px}.management-advanced-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.management-advanced-heading{align-items:flex-start}.management-advanced-heading strong{font-size:12px}.management-filter-bar{gap:8px;padding:10px}.management-filter-bar>div:first-child{width:100%}.management-filter-bar>label{flex:1;justify-content:space-between}.management-filter-bar select{min-width:0;width:130px}.user-password-reset-form{padding:12px}.user-password-reset-actions{flex-wrap:wrap}}
