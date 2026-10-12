@@ -132,7 +132,8 @@ export default function AuthGate() {
         if (!error && data?.user?.email && data?.user?.role) {
           const verified = { email: data.user.email, role: data.user.role };
           localStorage.setItem(USER_CACHE_KEY, JSON.stringify(verified));
-          setUser(verified);
+          // Avoid re-rendering the entire workspace when background validation confirms the same identity.
+          if (!cachedUser || cachedUser.email !== verified.email || cachedUser.role !== verified.role) setUser(verified);
           return;
         }
         // A successful session response with no user means the token has expired/revoked.
