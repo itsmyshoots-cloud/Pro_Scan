@@ -1741,3 +1741,172 @@ body{background:var(--ps-canvas);color:var(--ps-ink);font-family:Inter,ui-sans-s
  .app .dashboard-footer{align-items:flex-start}
 }
 @media(prefers-reduced-motion:reduce){.app main{animation:none!important}.app button{transition:none!important}}
+
+
+/* Final kiosk spacing fix + finishing polish across Pro Scan */
+.app-operator .operator-workstation-top{
+ flex:0 0 clamp(132px,16vh,148px);
+ min-height:132px;
+ gap:10px;
+ overflow:visible;
+}
+.app-operator .operator-assignment-card{
+ min-height:132px;
+ padding:13px 15px;
+ overflow:visible;
+}
+.app-operator .operator-plan-setup{
+ display:flex;
+ flex-direction:column;
+ justify-content:center;
+ min-height:100%;
+}
+.app-operator .operator-plan-setup .operator-assignment-heading{
+ margin:0 0 9px;
+ flex-shrink:0;
+}
+.app-operator .operator-plan-setup>label{
+ display:flex;
+ flex-direction:column;
+ gap:6px;
+ min-width:0;
+ flex-shrink:0;
+}
+.app-operator .operator-plan-setup select{
+ height:42px;
+ margin:0;
+ flex-shrink:0;
+}
+.app-operator .operator-plan-setup>p{
+ margin:9px 0 0;
+ line-height:1.4;
+ font-size:10px;
+ overflow-wrap:anywhere;
+}
+.app-operator .operator-clock-block{
+ min-height:132px;
+ padding:14px 18px;
+}
+.app-operator .operator-workstation-empty{
+ border-color:#d6e2f0;
+ background:
+  radial-gradient(ellipse at 50% 18%,rgba(219,234,254,.38),transparent 48%),
+  linear-gradient(145deg,#fff,#f8fbff);
+}
+.app-operator .operator-workstation-empty .operator-empty-icon{
+ box-shadow:0 6px 16px rgba(37,99,235,.08);
+}
+.app-operator .operator-workstation-empty>strong{
+ font-size:clamp(16px,1.25vw,19px);
+ letter-spacing:-.025em;
+}
+.app-operator .operator-workstation-empty>span:last-child{
+ max-width:510px;
+ font-size:11px;
+ line-height:1.6;
+}
+.app-operator .operator-assignment-card,.app-operator .operator-clock-block,
+.app-operator .operator-scan-input-panel,.app-operator .operator-workstation-side{
+ border-radius:15px;
+}
+.app-operator .operator-workstation-metric{
+ border-radius:13px;
+}
+.app-operator .operator-workstation-metric>span{
+ letter-spacing:.08em;
+}
+.app-operator .operator-recent-scans-heading{
+ padding-bottom:8px;
+}
+.app-operator .operator-recent-code>strong{
+ font-size:13px;
+}
+.app-operator .operator-recent-row{
+ transition:background .12s ease;
+}
+.app-operator .operator-recent-row:hover{
+ background:#f8fbff;
+}
+.app:not(.app-operator) .dashboard-kpi,
+.app:not(.app-operator) .line-monitor-card,
+.app:not(.app-operator) .report-filter-panel,
+.app:not(.app-operator) .report-results-panel,
+.app:not(.app-operator) .user-admin-card{
+ transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;
+}
+.app:not(.app-operator) .management-title-bar,
+.app:not(.app-operator) .reports-title-bar,
+.app:not(.app-operator) .user-admin-heading{
+ align-items:center;
+}
+.app:not(.app-operator) .management-title-bar h2,
+.app:not(.app-operator) .reports-title-bar h2,
+.app:not(.app-operator) .user-admin-heading h2{
+ font-size:clamp(25px,2vw,31px);
+ letter-spacing:-.045em;
+}
+.app:not(.app-operator) .dashboard-hero h2,
+.app:not(.app-operator) .monitoring-hero h2{
+ font-size:clamp(25px,2.1vw,33px);
+}
+.app:not(.app-operator) .report-filter-panel,
+.app:not(.app-operator) .report-results-panel{
+ border-radius:16px;
+}
+.app:not(.app-operator) .management-table thead th,
+.app:not(.app-operator) .report-results-table thead th,
+.app:not(.app-operator) .user-admin-table thead th{
+ letter-spacing:.09em;
+}
+.app:not(.app-operator) .management-table tbody tr:hover td,
+.app:not(.app-operator) .report-results-table tbody tr:hover td,
+.app:not(.app-operator) .user-admin-table tbody tr:hover td{
+ background:#f8fbff;
+}
+.app:not(.app-operator) .management-table tbody tr:hover td:first-child,
+.app:not(.app-operator) .report-results-table tbody tr:hover td:first-child,
+.app:not(.app-operator) .user-admin-table tbody tr:hover td:first-child{
+ box-shadow:inset 3px 0 #93c5fd;
+}
+.app:not(.app-operator) .empty{
+ border:1px dashed #d8e2ee;
+ background:linear-gradient(145deg,#fff,#f8fafc);
+ border-radius:13px;
+}
+.app:not(.app-operator) .dashboard-footer{
+ color:#7a8798;
+}
+.app:not(.app-operator) .dashboard-footer button{
+ border-color:#d7e4f5;
+ background:#fff;
+}
+@media(max-width:950px){
+ .app-operator .operator-workstation-top{
+  flex-basis:clamp(132px,17vh,144px);
+  min-height:132px;
+ }
+ .app-operator .operator-assignment-card,.app-operator .operator-clock-block{
+  min-height:132px;
+ }
+}
+@media(max-width:620px){
+ .app-operator .operator-workstation-top{
+  flex-basis:clamp(124px,18vh,140px);
+  min-height:124px;
+ }
+ .app-operator .operator-assignment-card,.app-operator .operator-clock-block{
+  min-height:124px;
+ }
+ .app-operator .operator-plan-setup>p{font-size:8px}
+ .app-operator .operator-plan-setup select{height:36px}
+ .app-operator .operator-recent-code>strong{font-size:9px}
+}
+@media(max-height:760px){
+ .app-operator .operator-workstation-top{
+  flex-basis:clamp(124px,19vh,136px);
+  min-height:124px;
+ }
+ .app-operator .operator-assignment-card,.app-operator .operator-clock-block{
+  min-height:124px;
+ }
+}
