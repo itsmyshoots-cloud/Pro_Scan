@@ -221,6 +221,7 @@ export default function App({user}){
   if(!updated.length)return plans;
   const nextPlans=plans.map(plan=>updated.find(changed=>changed.id===plan.id)||plan);
   setPlans(nextPlans);
+  updated.forEach(plan=>broadcastProductionChange('plan',plan.id));
   const changedSelected=updated.find(plan=>plan.id===selectedPlan?.id);
   if(changedSelected){setSelectedPlan(changedSelected);if(changedSelected.status==='completed'||changedSelected.status==='cancelled')setScannerReady(false);}
   return nextPlans;
@@ -304,7 +305,7 @@ export default function App({user}){
   const channel=productionChannelRef.current;if(!channel)return;
   try{const sent=channel.send({type:'broadcast',event:'production-changed',payload:{kind,planId,recordId,at:Date.now()}});if(sent&&typeof sent.catch==='function')sent.catch(()=>{});}catch{}
  };
- realtimeRefreshRef.current={load,refreshMonitoring,refreshPlanMetrics,selectedPlan,plans};
+ realtimeRefreshRef.current={load,refreshMonitoring,refreshPlanMetrics,selectedPlan,plans,monitoringSerials};
  useEffect(()=>{
   const channel=supabase.channel('pro-scan-live-production',{config:{broadcast:{self:false}}})
    .on('broadcast',{event:'production-changed'},async({payload})=>{
@@ -607,7 +608,7 @@ export default function App({user}){
     data=result.data;
    }
    const recordEvent=async(status,serialValue)=>{
-    const {data,eventError}=await supabase.from('scan_events').insert({serial_number:serialValue||clean,plan_id:selectedPlan.id,operator_name:operator,production_line:selectedPlan.production_line||null,scan_status:status}).select('id,plan_id,serial_number,scanned_at,operator_name,production_line,scan_status,serial_number_id').single();
+    const {data,error:eventError}=await supabase.from('scan_events').insert({serial_number:serialValue||clean,plan_id:selectedPlan.id,operator_name:operator,production_line:selectedPlan.production_line||null,scan_status:status}).select('id,plan_id,serial_number,scanned_at,operator_name,production_line,scan_status,serial_number_id').single();
     return {data,error:eventError};
    };
    const showDuplicate=row=>{
@@ -637,8 +638,17 @@ export default function App({user}){
    const scannedRow={...data,status:'scanned',scanned_at:scannedAt,scanned_by:operator};
    const mergeScanned=previous=>previous.some(row=>row.id===data.id)?previous.map(row=>row.id===data.id?{...row,...scannedRow}:row):[...previous,scannedRow];
    setPlanSerials(mergeScanned);setMonitoringSerials(mergeScanned);setMonitoringUpdatedAt(new Date());setLastScanAt(scannedAt);
-   const successMessage='✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—');setMessage(successMessage);
+   const completedByThisScan=Number(selectedPlan.planned_qty||0)>0&&planSerials.filter(row=>row.status==='scanned').length+1>=Number(selectedPlan.planned_qty||0);
+   const successMessage=completedByThisScan?'✓ PLAN TARGET REACHED · '+data.serial_number:'✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—');
+   setMessage(successMessage);
    broadcastProductionChange('scan',selectedPlan.id,data.id);
+   if(completedByThisScan){
+    setScannerReady(false);
+    void supabase.from('production_plans').update({status:'completed'}).eq('id',selectedPlan.id).eq('status','active').select().maybeSingle().then(({data:completedPlan,error:completeError})=>{
+     if(completedPlan){setPlans(previous=>previous.map(plan=>plan.id===completedPlan.id?completedPlan:plan));setSelectedPlan(completedPlan);broadcastProductionChange('plan',completedPlan.id);}
+     if(completeError)setMessage(current=>current===successMessage?successMessage+' · status update pending':current);
+    });
+   }
    void recordEvent('success',data.serial_number).then(({error:eventError})=>{if(eventError)setMessage(current=>current===successMessage?successMessage+' · scan event log failed':current);});
   }catch(error){
    setMessage('Scan failed: '+(error?.message||'Unknown error'));
@@ -669,7 +679,7 @@ export default function App({user}){
    const {data,error}=await supabase.from('production_plans').update({status:'active'}).eq('id',plan.id).in('status',['draft','active']).select().maybeSingle();
    if(error){setScannerReady(false);setMessage('Could not activate production plan: '+error.message);return;}
    const activePlan=data||{...plan,status:'active'};
-   setSelectedPlan(activePlan);setPlans(previous=>previous.map(row=>row.id===activePlan.id?activePlan:row));
+   setSelectedPlan(activePlan);setPlans(previous=>previous.map(row=>row.id===activePlan.id?activePlan:row));broadcastProductionChange('plan',activePlan.id);
   }
   setScannerReady(true);setMessage('2D BARCODE SCANNER READY · Scan QR codes continuously.');
  };
