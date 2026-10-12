@@ -90,7 +90,16 @@ function PendingAccessScreen({email,onSignOut,onRefresh,checking,error,notice}) 
 }
 
 export default function AuthGate() {
-  const [user, setUser] = useState(undefined);
+  const [user, setUser] = useState(() => {
+    if (typeof localStorage === 'undefined') return undefined;
+    const token = localStorage.getItem(SESSION_KEY);
+    if (!token) return null;
+    try {
+      const cached = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null');
+      if (cached?.email && ['pending','super_admin','planner','operator'].includes(cached?.role)) return cached;
+    } catch {}
+    return undefined;
+  });
   const acceptUser = nextUser => {
     if(nextUser && nextUser.email && nextUser.role){
       localStorage.setItem(USER_CACHE_KEY,JSON.stringify({email:nextUser.email,role:nextUser.role}));
