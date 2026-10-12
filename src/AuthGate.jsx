@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import './auth.css';
 
 const SESSION_KEY = 'pro_scan_session';
+const USER_CACHE_KEY = 'pro_scan_user_cache';
 
 function LoginScreen({ onAuthenticated }) {
   const [mode,setMode]=useState('login');
@@ -90,29 +91,62 @@ function PendingAccessScreen({email,onSignOut,onRefresh,checking,error,notice}) 
 
 export default function AuthGate() {
   const [user, setUser] = useState(undefined);
+  const acceptUser = nextUser => {
+    if(nextUser && nextUser.email && nextUser.role){
+      localStorage.setItem(USER_CACHE_KEY,JSON.stringify({email:nextUser.email,role:nextUser.role}));
+    }else{
+      localStorage.removeItem(USER_CACHE_KEY);
+    }
+    setUser(nextUser||null);
+  };
 
   useEffect(() => {
     let mounted = true;
     const token = localStorage.getItem(SESSION_KEY);
     if (!token) {
+      localStorage.removeItem(USER_CACHE_KEY);
       setUser(null);
       return () => { mounted = false; };
     }
 
+    let cachedUser = null;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null');
+      if (parsed?.email && ['pending','super_admin','planner','operator'].includes(parsed?.role)) cachedUser = parsed;
+    } catch {}
+    // Resume the shell immediately; the token is still validated by the server below.
+    if (cachedUser) setUser(cachedUser);
+
     supabase.functions.invoke('app-auth', { body: { action: 'session' } })
       .then(({ data, error }) => {
         if (!mounted) return;
-        if (error || !data?.user) {
+        if (!error && data?.user?.email && data?.user?.role) {
+          const verified = { email: data.user.email, role: data.user.role };
+          localStorage.setItem(USER_CACHE_KEY, JSON.stringify(verified));
+          setUser(verified);
+          return;
+        }
+        // A successful session response with no user means the token has expired/revoked.
+        if (!error && data && !data.user) {
           localStorage.removeItem(SESSION_KEY);
+          localStorage.removeItem(USER_CACHE_KEY);
           setUser(null);
-        } else {
-          setUser(data.user);
+          return;
+        }
+        // Preserve a cached shell during transient network/service errors; never treat it as a valid server session.
+        if (!cachedUser) {
+          localStorage.removeItem(SESSION_KEY);
+          localStorage.removeItem(USER_CACHE_KEY);
+          setUser(null);
         }
       })
       .catch(() => {
         if (!mounted) return;
-        localStorage.removeItem(SESSION_KEY);
-        setUser(null);
+        if (!cachedUser) {
+          localStorage.removeItem(SESSION_KEY);
+          localStorage.removeItem(USER_CACHE_KEY);
+          setUser(null);
+        }
       });
     return () => { mounted = false; };
   }, []);
@@ -122,6 +156,7 @@ export default function AuthGate() {
       await supabase.functions.invoke('app-auth', { body: { action: 'logout' } });
     } finally {
       localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(USER_CACHE_KEY);
       setUser(null);
     }
   };
@@ -134,14 +169,14 @@ export default function AuthGate() {
     try{
       const {data,error}=await supabase.functions.invoke('app-auth',{body:{action:'session'}});
       if(error||!data?.user){setAccessCheckError(error?.message||'Could not verify your account. Please sign in again.');return;}
-      setUser(data.user);
+      acceptUser(data.user);
       if(data.user.role==='pending')setAccessCheckNotice('Your role is still pending. Check again after the Super Admin updates it.');
     }catch(error){setAccessCheckError(error?.message||'Could not check access.');}
     finally{setCheckingAccess(false);}
   };
 
-  if (user === undefined) return <main className='auth-page'><div className='auth-loading'>Checking secure access…</div></main>;
-  if (!user) return <LoginScreen onAuthenticated={setUser} />;
+  if (user === undefined) return <main className='auth-page auth-startup'><div className='auth-startup-card'><span className='auth-startup-logo'>PS</span><div><strong>Pro Scan</strong><small>Production Control</small></div><span className='auth-startup-spinner'/><p>Preparing your workspace</p></div></main>;
+  if (!user) return <LoginScreen onAuthenticated={acceptUser} />;
   if (user.role === 'pending') return <PendingAccessScreen email={user.email} onSignOut={signOut} onRefresh={refreshAccess} checking={checkingAccess} error={accessCheckError} notice={accessCheckNotice} />;
 
   return <div className={'auth-shell auth-role-' + user.role}>
