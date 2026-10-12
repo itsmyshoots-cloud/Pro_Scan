@@ -44,6 +44,14 @@ function getPlanShiftWindow(plan){
 
 function minutesToClock(totalMinutes){const minute=((Number(totalMinutes)||0)%(24*60)+24*60)%(24*60);return String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');}
 function planShiftLabel(plan){const shift=getPlanShiftWindow(plan);return shift?formatClock12(minutesToClock(shift.start))+' – '+formatClock12(minutesToClock(shift.end)):'Shift not set';}
+function distributeHourlyTargetsEvenly(targets,total){
+ const source=Array.isArray(targets)?targets:[];
+ const targetTotal=Math.max(0,Math.floor(Number(total)||0));
+ if(!source.length)return [];
+ const base=Math.floor(targetTotal/source.length);
+ const remainder=targetTotal%source.length;
+ return source.map((row,index)=>({...row,planned_qty:base+(index<remainder?1:0)}));
+}
 function rebalanceHourlyTargets(targets,total){
  const source=Array.isArray(targets)?targets:[],targetTotal=Math.max(0,Math.floor(Number(total)||0));
  if(!source.length)return [];
@@ -788,11 +796,11 @@ export default function App({user}){
   <label>Product<input value={form.product_name} onChange={e=>setForm({...form,product_name:e.target.value})} placeholder='e.g. LifeLong OTG'/></label>
   <label>Model<input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder='e.g. RCAD60'/></label>
   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(x=><option key={x}>{x}</option>)}</select></label>
-  <label>Total planned quantity<input type='number' min='1' value={form.planned_qty} onChange={e=>{const value=e.target.value;setForm({...form,planned_qty:value});if(value!=='')setHourlyTargets(previous=>rebalanceHourlyTargets(previous,Number(value)));}}/></label>
+  <label>Total planned quantity<input type='number' min='1' value={form.planned_qty} onChange={e=>{const value=e.target.value;setForm({...form,planned_qty:value});setHourlyTargets(previous=>distributeHourlyTargetsEvenly(previous,Number(value||0)));}}/></label>
  </div>
  <section className='hourly-target-editor'>
   <div className='hourly-editor-head'><div><span className='eyebrow'>HOURLY PRODUCTION TARGET</span><h3>Plan output for every hour</h3><p>Enter the number of units you expect to complete in each hour of the shift. The targets must add up to the total planned quantity.</p></div>
-   <div className='shift-time-fields'><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>rebalanceHourlyTargets(createHourlyTargets(next,shiftEnd,previous),Number(form.planned_qty||0)));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>rebalanceHourlyTargets(createHourlyTargets(shiftStart,next,previous),Number(form.planned_qty||0)));}}/></label></div>
+   <div className='shift-time-fields'><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(next,shiftEnd,previous),Number(form.planned_qty||0)));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(shiftStart,next,previous),Number(form.planned_qty||0)));}}/></label></div>
   </div>
   {hourlyTargets.length?<div className='hourly-target-grid'>{hourlyTargets.map((row,index)=><label className='hour-target-field' key={row.hour}><span>{getHourlySlotLabel(row.hour)}</span><small>Planned units</small><input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/></label>)}</div>:<div className='notice'>Choose a start and end time with complete 60-minute slots. For example, 09:30 AM to 05:30 PM.</div>}
   <div className='hourly-target-summary'><div><span>Hourly target total</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'target-match':'target-mismatch'}>{hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'✓ Totals match':'Adjust hourly targets to match total planned quantity'}</span></div>
