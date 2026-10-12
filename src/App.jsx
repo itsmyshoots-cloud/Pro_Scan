@@ -158,7 +158,7 @@ export default function App({user}){
  const [usersNotice,setUsersNotice]=useState('');
  const [passwordResetTarget,setPasswordResetTarget]=useState(null); const [passwordResetValue,setPasswordResetValue]=useState(''); const [passwordResetConfirm,setPasswordResetConfirm]=useState(''); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
  const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const scannerInputRef=useRef(null); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [realtimeConnected,setRealtimeConnected]=useState(false); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [manageFilters,setManageFilters]=useState({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'}); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false); const productionChannelRef=useRef(null); const realtimeRefreshRef=useRef({});
+ const operator='Operator'; const scannerInputRef=useRef(null); const completingPlanRef=useRef(false); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [realtimeConnected,setRealtimeConnected]=useState(false); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [manageFilters,setManageFilters]=useState({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'}); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false); const productionChannelRef=useRef(null); const realtimeRefreshRef=useRef({});
  const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -645,10 +645,21 @@ export default function App({user}){
    setMessage(successMessage);
    broadcastProductionChange('scan',selectedPlan.id,data.id);
    if(completedByThisScan){
-    setScannerReady(false);
+    completingPlanRef.current=true;setScannerReady(false);
     void supabase.from('production_plans').update({status:'completed'}).eq('id',selectedPlan.id).eq('status','active').select().maybeSingle().then(({data:completedPlan,error:completeError})=>{
-     if(completedPlan){setPlans(previous=>previous.map(plan=>plan.id===completedPlan.id?completedPlan:plan));setSelectedPlan(completedPlan);broadcastProductionChange('plan',completedPlan.id);}
-     if(completeError)setMessage(current=>current===successMessage?successMessage+' · status update pending':current);
+     if(completedPlan){
+      setPlans(previous=>previous.map(plan=>plan.id===completedPlan.id?completedPlan:plan));
+      setSelectedPlan(completedPlan);setScannerReady(false);broadcastProductionChange('plan',completedPlan.id);
+      completingPlanRef.current=false;
+     }else if(completeError){
+      setMessage(current=>current===successMessage?successMessage+' · completion sync failed; contact Planner':current);
+      // Keep scanning disabled when the target is met but status could not be saved.
+     }else{
+      const completedFallback={...selectedPlan,status:'completed'};
+      setPlans(previous=>previous.map(plan=>plan.id===selectedPlan.id?completedFallback:plan));
+      setSelectedPlan(completedFallback);setScannerReady(false);broadcastProductionChange('plan',selectedPlan.id);
+      completingPlanRef.current=false;
+     }
     });
    }
    void recordEvent('success',data.serial_number).then(({error:eventError})=>{if(eventError)setMessage(current=>current===successMessage?successMessage+' · scan event log failed':current);});
@@ -687,13 +698,14 @@ export default function App({user}){
  };
  useEffect(()=>{
   if(view!=='operator'||!selectedPlan||showPlanSetup){setScannerReady(false);return;}
+  if(completingPlanRef.current){setScannerReady(false);return;}
   void prepareSelectedPlanForScanning();
   const shift=getPlanShiftWindow(selectedPlan),current=new Date(),minutes=getLocalMinutes(current);
   let timer=null;
   if(shift&&selectedPlan.production_date===localDateKey(current)&&minutes<shift.start)timer=setTimeout(()=>void prepareSelectedPlanForScanning(),Math.max(1000,(shift.start-minutes)*60000+1200));
   else if(shift&&selectedPlan.production_date===localDateKey(current)&&minutes<shift.end)timer=setTimeout(()=>void prepareSelectedPlanForScanning(),Math.max(1000,(shift.end-minutes)*60000+1200));
   return()=>{if(timer)clearTimeout(timer);};
- },[view,selectedPlan?.id,showPlanSetup,scannerReady]);
+ },[view,selectedPlan?.id,selectedPlan?.status,showPlanSetup,scannerReady]);
  useEffect(()=>{
   if(view!=='operator'||!scannerReady||showPlanSetup||detailsPanel)return;
   const timer=setTimeout(()=>scannerInputRef.current?.focus(),60);
@@ -923,7 +935,7 @@ export default function App({user}){
     <div className='operator-assignment-heading'><span className='eyebrow'>SET PRODUCTION PLAN</span><span className='operator-setup-step'>Choose once · scan continuously</span></div>
     <label>Today's production plan<select value={selectedPlan?.id||''} onChange={e=>{
       const plan=operatorEligiblePlans.find(item=>item.id===e.target.value)||null;
-      setScannerReady(false);setSelectedPlan(plan);setShowPlanSetup(!plan);setDetailsPanel('');setDetailsSearch('');setDuplicateWarning(null);
+      completingPlanRef.current=false;setScannerReady(false);setSelectedPlan(plan);setShowPlanSetup(!plan);setDetailsPanel('');setDetailsSearch('');setDuplicateWarning(null);
       setMessage(plan?'Selected '+plan.production_line+' · '+planShiftLabel(plan)+'. Initializing the 2D barcode scanner…':'Choose one of today’s plans to begin.');
       if(plan)void refreshPlanMetrics(plan);
     }}>
