@@ -1,9 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import {supabase} from './lib/supabase';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
 
 const lines=['Line 1','Line 2','Line 3'];
 function createHourlyTargets(start='09:00',end='18:00',previous=[]){
@@ -103,7 +99,13 @@ function pairsFromText(text){
  return labels.map((label_number,i)=>({label_number,serial_number:serials[i]}));
 }
 async function parseSupplierPdf(file,onProgress){
- const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+ // PDF.js is loaded only when a supplier actually uploads a PDF, not on normal app startup.
+ const [pdfjsModule,workerModule]=await Promise.all([
+  import('pdfjs-dist/legacy/build/pdf.mjs'),
+  import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
+ ]);
+ pdfjsModule.GlobalWorkerOptions.workerSrc=workerModule.default;
+ const pdf=await pdfjsModule.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
  const pageCount=pdf.numPages,labels=[],serials=[];
  try{
   for(let pageNo=1;pageNo<=pageCount;pageNo++){
