@@ -1,0 +1,60 @@
+name: Refine V1.1 reports and live planning
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  refine-v11:
+    if: ${{ !contains(github.event.head_commit.message, '[v1.1-report-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refine reports and live shift metrics
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/App.jsx')
+          s=p.read_text()
+          marker='// V1.1 REPORT/LIVE REFINEMENT'
+          if marker in s: raise SystemExit(0)
+
+          # Do not overload the existing reportDownloadPlanId busy-state variable with filtering state.
+          bad="<label>Production plan<select value={reportDownloadPlanId} onChange={e=>setReportDownloadPlanId(e.target.value)}><option value=''>All plans</option>{filteredReportPlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_date} · {plan.production_line} · {plan.model}</option>)}</select></label>"
+          s=s.replace(bad,'')
+
+          # Add an explicit production-plan filter to the report filter state.
+          s=s.replace("const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all'", "const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',plan_id:'all',product_name:'all'")
+          s=s.replace("const reportProductOptions=useMemo(()=>", "const reportPlanOptions=useMemo(()=>plans.map(plan=>({id:plan.id,label:(plan.production_date||'')+' · '+(plan.production_line||'')+' · '+(plan.model||'') })).sort((a,b)=>a.label.localeCompare(b.label)),[plans]);\n const reportProductOptions=useMemo(()=>")
+          s=s.replace("const filteredReportPlans=useMemo(()=>plans.filter(plan=>\n  (reportFilters.product_name", "const filteredReportPlans=useMemo(()=>plans.filter(plan=>\n  (reportFilters.plan_id==='all'||plan.id===reportFilters.plan_id)&&\n  (reportFilters.product_name")
+          s=s.replace("setReportFilters({type:'summary',group_by:'none',product_name:'all'", "setReportFilters({type:'summary',group_by:'none',plan_id:'all',product_name:'all'")
+          # Insert plan selector before product selector in report filters.
+          needle="<div className='report-filter-grid'><label>Product"
+          replacement="<div className='report-filter-grid'><label>Production plan<select value={reportFilters.plan_id||'all'} onChange={e=>setReportFilters({...reportFilters,plan_id:e.target.value})}><option value='all'>All production plans</option>{reportPlanOptions.map(option=><option value={option.id} key={option.id}>{option.label}</option>)}</select></label><label>Product"
+          s=s.replace(needle,replacement)
+
+          # Live monitoring should represent the quantity assigned to the current shift, not the whole multi-shift plan.
+          s=s.replace("const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0),[activePlans]);", "const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.shift_planned_qty??plan.planned_qty??0),0),[activePlans]);")
+          s=s.replace("const target=linePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0);", "const target=linePlans.reduce((sum,plan)=>sum+Number(plan.shift_planned_qty??plan.planned_qty??0),0);")
+
+          # Add shift/manpower/carry-forward fields to the detailed plan CSV report.
+          s=s.replace("'Production Line','Plan Status','Planned Quantity','Allocated Serials'", "'Production Line','Shift Name','Shift Start','Shift End','Manpower','Shift Planned Quantity','Carry Forward Quantity','Carry Forward From Plan','Plan Status','Planned Quantity','Allocated Serials'")
+          s=s.replace("'Production Line':plan.production_line||'','Plan Status':plan.status||'',", "'Production Line':plan.production_line||'','Shift Name':plan.shift_name||'Shift A','Shift Start':plan.shift_start||'','Shift End':plan.shift_end||'','Manpower':Number(plan.manpower_count||0),'Shift Planned Quantity':Number(plan.shift_planned_qty??plan.planned_qty??0),'Carry Forward Quantity':Number(plan.carry_forward_qty||0),'Carry Forward From Plan':plan.carry_forward_from_plan_id||'','Plan Status':plan.status||'',")
+
+          # Add the same fields to the report table so the page itself is understandable.
+          s=s.replace("<td><span className='report-line-pill'>{plan.production_line||'Unassigned'}</span></td>", "<td><span className='report-line-pill'>{plan.production_line||'Unassigned'}</span><small>{plan.shift_name||'Shift A'} · {plan.shift_start||'—'}–{plan.shift_end||'—'}</small></td>")
+          s=s.replace("<td><div className='report-progress-cell'>", "<td><div className='report-shift-meta'><strong>Shift {Number(plan.shift_planned_qty??plan.planned_qty??0).toLocaleString()}</strong><span>Manpower {Number(plan.manpower_count||0).toLocaleString()}</span>{plan.carry_forward_from_plan_id&&<span>Carry-forward {Number(plan.carry_forward_qty||0).toLocaleString()}</span>}</div><div className='report-progress-cell'>")
+
+          s=marker+'\n'+s
+          p.write_text(s)
+      - name: Commit refinement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Refine V1.1 reports and live shift metrics [v1.1-report-fix]"
+          git push
