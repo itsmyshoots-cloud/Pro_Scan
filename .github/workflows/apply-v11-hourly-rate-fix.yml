@@ -1,0 +1,63 @@
+name: Fix V1.1 hourly production rate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  hourly-rate-fix:
+    if: ${{ !contains(github.event.head_commit.message, '[v1.1-hourly-rate-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Change planning UI to hourly production quantity
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/App.jsx')
+          s=p.read_text()
+          marker='// V1.1 HOURLY PRODUCTION RATE'
+          if marker in s:
+              raise SystemExit(0)
+
+          s=s.replace('const [shiftPlannedQty,setShiftPlannedQty]=useState(500);', 'const [hourlyProductionQty,setHourlyProductionQty]=useState(100);')
+          s=s.replace('Number(shiftPlannedQty||0)', 'Number(hourlyProductionQty||0)')
+          s=s.replace('setShiftPlannedQty(', 'setHourlyProductionQty(')
+          s=s.replace('value={shiftPlannedQty}', 'value={hourlyProductionQty}')
+
+          s=s.replace("setShiftName('Shift A');setShiftStart('09:00');setShiftEnd('18:00');setShiftPlannedQty(500);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500));", "setShiftName('Shift A');setShiftStart('09:00');setShiftEnd('18:00');setHourlyProductionQty(100);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),100));")
+          s=s.replace("setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setShiftPlannedQty(Number(plan.shift_planned_qty ?? qty));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));", "setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(schedule.length?Number(schedule[0].planned_qty||0):Number(plan.shift_planned_qty??0));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));")
+
+          old_validation="const shiftQty=Math.max(0,Math.floor(Number(hourlyProductionQty)||0)); if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed total planned quantity.'); if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal shift planned quantity ('+shiftQty.toLocaleString()+').');"
+          new_validation="const shiftQty=hourlyTargetTotal; if(shiftQty<1)return setMessage('Enter a production quantity per hour or set at least one hourly target.'); if(shiftQty>qty)return setMessage('The total shift production capacity ('+shiftQty.toLocaleString()+') cannot exceed the total planned quantity ('+qty.toLocaleString()+').');"
+          s=s.replace(old_validation,new_validation)
+
+          s=s.replace("p_planned_qty:qty,p_hourly_targets:hourlyPayload,p_serial_pairs:chosen", "p_planned_qty:qty,p_hourly_targets:hourlyPayload,p_serial_pairs:chosen,p_shift_name:shiftName.trim()||'Shift A',p_shift_start:shiftStart,p_shift_end:shiftEnd,p_manpower_count:manpowerCount")
+          s=s.replace("setMessage('Draft production plan updated successfully. '+qty.toLocaleString()+' serials are allocated to the revised shift.');", "setMessage('Draft production plan updated successfully. '+hourlyTargetTotal.toLocaleString()+' units are scheduled for this shift at the configured hourly targets.');")
+
+          s=s.replace("<span className='eyebrow'>HOURLY PRODUCTION TARGET</span><h3>Plan output for every hour</h3><p>Enter the number of units you expect to complete in each hour of the shift. The targets must add up to the total planned quantity.</p>", "<span className='eyebrow'>SHIFT PRODUCTION RATE</span><h3>Set production quantity per hour</h3><p>Enter the expected production quantity per hour. The shift capacity is calculated from the available hours; the remaining quantity from the total plan can carry forward to the next available shift.</p>")
+          old_shift="<label>Shift planned quantity<input type='number' min='0' value={hourlyProductionQty} onChange={e=>{const value=e.target.value;setHourlyProductionQty(value);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(previous,Number(value||0)));}}/></label>"
+          new_shift="<label>Production quantity / hour<input type='number' min='0' step='1' value={hourlyProductionQty} onChange={e=>{const value=e.target.value;setHourlyProductionQty(value);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(shiftStart,shiftEnd),Number(value||0)));}}/></label>"
+          s=s.replace(old_shift,new_shift)
+          s=s.replace("<small>Planned units</small>", "<small>Production target</small>")
+          old_summary="<div className='hourly-target-summary'><div><span>Hourly target total</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'target-match':'target-mismatch'}>{hourlyTargetTotal===Number(form.planned_qty)&&hourlyTargets.length?'✓ Totals match':'Adjust hourly targets to match total planned quantity'}</span></div>"
+          new_summary="<div className='hourly-target-summary'><div><span>Shift capacity</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal>0&&hourlyTargetTotal<=Number(form.planned_qty||0)?'target-match':'target-mismatch'}>{hourlyTargetTotal>0&&hourlyTargetTotal<Number(form.planned_qty||0)?'↳ '+(Number(form.planned_qty||0)-hourlyTargetTotal).toLocaleString()+' units can carry forward if not completed':hourlyTargetTotal===Number(form.planned_qty||0)?'✓ Shift covers the full plan':'Enter a valid hourly production quantity'}</span></div>"
+          s=s.replace(old_summary,new_summary)
+
+          s=s.replace("'Shift Planned Quantity':Number(plan.shift_planned_qty??plan.planned_qty??0)", "'Shift Capacity':Number(plan.shift_planned_qty??plan.planned_qty??0)")
+          s=s.replace("<th>Shift Qty</th><th>Manpower</th>", "<th>Shift Capacity</th><th>Manpower</th>")
+          s=s.replace("<div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · Total {target.toLocaleString()} · Shift {Number(plan.shift_planned_qty??target).toLocaleString()} · Manpower {Number(plan.manpower_count||0).toLocaleString()}</small>", "<div className='activity-product'>{plan.product_name}</div><small>{plan.brand||'—'} · {plan.model} · Total {target.toLocaleString()} · Capacity {Number(plan.shift_planned_qty??target).toLocaleString()} · Manpower {Number(plan.manpower_count||0).toLocaleString()}</small>")
+
+          s=marker+'\n'+s
+          p.write_text(s)
+      - name: Commit hourly-rate fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix V1.1 hourly production quantity planning [v1.1-hourly-rate-fix]"
+          git push
