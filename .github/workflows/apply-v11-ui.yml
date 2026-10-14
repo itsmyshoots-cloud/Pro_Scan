@@ -9,61 +9,97 @@ permissions:
 
 jobs:
   apply-v11-ui:
-    if: ${{ !contains(github.event.head_commit.message, '[v1.1-ui]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[v1.1-final-ui]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Update production planning UI and rollover
+      - name: Finalize production requirement and hourly-rate planner
         shell: python
         run: |
           from pathlib import Path
-          p = Path('src/App.jsx')
-          s = p.read_text()
-          marker = '// V1.1 SHIFT PLANNING'
+          p=Path('src/App.jsx')
+          s=p.read_text(encoding='utf-8')
+          marker='// V1.1 HOURLY RATE FINAL UI'
           if marker in s:
               raise SystemExit(0)
+          s=s.replace('// V1.1 HOURLY PRODUCTION RATE',marker,1)
 
-          s = s.replace("const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyTargets,setHourlyTargets]=useState(()=>rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500));", "const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftName,setShiftName]=useState('Shift A'); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [shiftPlannedQty,setShiftPlannedQty]=useState(500); const [manpowerCount,setManpowerCount]=useState(0); const [hourlyTargets,setHourlyTargets]=useState(()=>distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500));")
+          # The uploaded supplier serial batch is the production requirement.
+          s=s.replace("planned_qty:500});", "planned_qty:0});", 1)
+          s=s.replace("setHourlyProductionQty(500);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500));", "setHourlyProductionQty(100);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),100));", 1)
 
-          old_load = "const load=async()=>{const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(100);if(error){setMessage(error.message);return;}if(data)setPlans(data)};"
-          new_load = "const load=async()=>{try{await supabase.rpc('ensure_production_carry_forward',{p_target_date:localDateKey(new Date())});}catch{} const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(200);if(error){setMessage(error.message);return;}if(data)setPlans(data)};"
-          s = s.replace(old_load,new_load)
+          old="""   validatePairs(parsed);setRows(parsed);setSourceFile(f.name);setFileInfo(pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file');
+   setMessage('Checking '+parsed.length.toLocaleString()+' serial-label pairs against existing production data…');
+   const conflicts=await checkDatabaseForConflicts(parsed,editingPlanId||'');setImportConflicts(conflicts);
+   if(conflicts.length)setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');
+   else{
+    const currentQty=Number(form.planned_qty||0);
+    if(currentQty>parsed.length){
+     setForm(previous=>({...previous,planned_qty:parsed.length}));setHourlyTargets(previous=>rebalanceHourlyTargets(previous,parsed.length));
+     setMessage('Planned quantity adjusted to '+parsed.length.toLocaleString()+' to match the available serials. Hourly targets were rebalanced; review them before saving.');
+    }else setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
+   }
+"""
+          new="""   validatePairs(parsed);setRows(parsed);setForm(previous=>({...previous,planned_qty:parsed.length}));setSourceFile(f.name);setFileInfo(pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file');
+   setMessage('Checking '+parsed.length.toLocaleString()+' serial-label pairs against existing production data…');
+   const conflicts=await checkDatabaseForConflicts(parsed,editingPlanId||'');setImportConflicts(conflicts);
+   if(conflicts.length)setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');
+   else setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. This is the production requirement; hourly capacity is calculated separately. No duplicates found in the database.');
+"""
+          if old not in s: raise SystemExit('Import block not found')
+          s=s.replace(old,new,1)
 
-          s = s.replace("setShiftStart('09:00');setShiftEnd('18:00');setHourlyTargets(rebalanceHourlyTargets(createHourlyTargets('09:00','18:00'),500));", "setShiftName('Shift A');setShiftStart('09:00');setShiftEnd('18:00');setShiftPlannedQty(500);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500));")
+          old="setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.shift_planned_qty ?? qty));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));"
+          new="setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? 0));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.hourly_targets?.[0]?.planned_qty??0)));"
+          if old not in s: raise SystemExit('Edit block not found')
+          s=s.replace(old,new,1)
 
-          s = s.replace("setShiftStart(startValue);setShiftEnd(endValue);setHourlyTargets(rebalanceHourlyTargets(schedule,qty));", "setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setShiftPlannedQty(Number(plan.shift_planned_qty ?? qty));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));" )
+          old=""" const createPlan=async()=>{
+  const qty=Number(form.planned_qty);
+  if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
+  if(!Number.isInteger(qty)||qty<1)return setMessage('Planned quantity must be a whole number greater than zero.');
+  if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
+  const shiftQty=Math.max(0,Math.floor(Number(shiftPlannedQty)||0)); if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed total planned quantity.'); if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal shift planned quantity ('+shiftQty.toLocaleString()+').');
+"""
+          new=""" const createPlan=async()=>{
+  const qty=Number(form.planned_qty||rows.length||0);
+  if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
+  if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
+  if(!Number.isInteger(qty)||qty<1)return setMessage('The uploaded serial batch is empty.');
+  if(qty!==rows.length)return setMessage('Production requirement must match the uploaded serial batch. Re-upload the complete batch.');
+  if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
+  const shiftQty=Math.max(0,Math.floor(Number(hourlyTargetTotal)||0));
+  const rate=Math.max(0,Math.floor(Number(hourlyProductionQty)||0));
+  if(!Number.isInteger(rate)||rate<1)return setMessage('Enter a production quantity per hour greater than zero.');
+  if(shiftQty!==rate*hourlyTargets.length)return setMessage('Hourly capacity does not match the configured production rate. Refresh the shift window and try again.');
+"""
+          if old not in s: raise SystemExit('Create validation block not found')
+          s=s.replace(old,new,1)
 
-          s = s.replace("setForm({...form,planned_qty:value});setHourlyTargets(previous=>distributeHourlyTargetsEvenly(previous,Number(value||0)));", "setForm({...form,planned_qty:value});")
+          old="<label>Total planned quantity<input type='number' min='1' value={form.planned_qty} onChange={e=>{const value=e.target.value;setForm({...form,planned_qty:value});}}/></label>\n"
+          if old not in s: raise SystemExit('Total quantity field not found')
+          s=s.replace(old,'',1)
 
-          old_shift = "<div className='shift-time-fields'><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(next,shiftEnd,previous),Number(form.planned_qty||0)));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(shiftStart,next,previous),Number(form.planned_qty||0)));}}/></label></div>"
-          new_shift = "<div className='shift-time-fields'><label>Shift name<input value={shiftName} onChange={e=>setShiftName(e.target.value)} placeholder='Shift A'/></label><label>Shift start<input type='time' value={shiftStart} onChange={e=>{const next=e.target.value;setShiftStart(next);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(next,shiftEnd),Number(shiftPlannedQty||0)));}}/></label><label>Shift end<input type='time' value={shiftEnd} onChange={e=>{const next=e.target.value;setShiftEnd(next);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(createHourlyTargets(shiftStart,next),Number(shiftPlannedQty||0)));}}/></label><label>Shift planned quantity<input type='number' min='0' value={shiftPlannedQty} onChange={e=>{const value=e.target.value;setShiftPlannedQty(value);setHourlyTargets(previous=>distributeHourlyTargetsEvenly(previous,Number(value||0)));}}/></label><label>Manpower used<input type='number' min='0' step='1' value={manpowerCount} onChange={e=>setManpowerCount(Math.max(0,Math.floor(Number(e.target.value)||0)))}/></label></div>"
-          s = s.replace(old_shift,new_shift)
+          old="<input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/>"
+          new="<input type='number' min='0' step='1' value={row.planned_qty} readOnly aria-label={getHourlySlotLabel(row.hour)+' production target'} />"
+          if old not in s: raise SystemExit('Hourly target input not found')
+          s=s.replace(old,new,1)
 
-          s = s.replace("if(hourlyTargetTotal!==qty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal total planned quantity ('+qty.toLocaleString()+').');", "const shiftQty=Math.max(0,Math.floor(Number(shiftPlannedQty)||0)); if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed total planned quantity.'); if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal shift planned quantity ('+shiftQty.toLocaleString()+').');")
+          old="<div className='hourly-target-summary'><div><span>Shift capacity</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal>0&&hourlyTargetTotal<=Number(form.planned_qty||0)?'target-match':'target-mismatch'}>{hourlyTargetTotal>0&&hourlyTargetTotal<Number(form.planned_qty||0)?'↳ '+(Number(form.planned_qty||0)-hourlyTargetTotal).toLocaleString()+' units can carry forward if not completed':hourlyTargetTotal===Number(form.planned_qty||0)?'✓ Shift covers the full plan':'Enter a valid hourly production quantity'}</span></div>"
+          new="<div className='hourly-target-summary'><div><span>Shift capacity</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Production requirement</span><strong>{Number(form.planned_qty||rows.length||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal>0&&hourlyTargetTotal<Number(form.planned_qty||rows.length||0)?'target-mismatch':'target-match'}>{hourlyTargetTotal>0&&hourlyTargetTotal<Number(form.planned_qty||rows.length||0)?'↳ '+(Number(form.planned_qty||rows.length||0)-hourlyTargetTotal).toLocaleString()+' units remain after this shift and carry forward automatically':'✓ Hourly capacity calculated from the shift rate'}</span></div>"
+          if old not in s: raise SystemExit('Summary block not found')
+          s=s.replace(old,new,1)
 
-          s = s.replace("const {data:plan,error:planError}=await supabase.from('production_plans').insert({...form,brand:form.brand.trim()||'Unspecified',planned_qty:qty,hourly_targets:hourlyPayload,status:'draft'}).select().single();", "const {data:plan,error:planError}=await supabase.from('production_plans').insert({...form,brand:form.brand.trim()||'Unspecified',planned_qty:qty,hourly_targets:hourlyPayload,status:'draft',shift_name:shiftName.trim()||'Shift A',shift_start:shiftStart,shift_end:shiftEnd,shift_planned_qty:shiftQty,manpower_count:manpowerCount}).select().single();")
-
-          s = s.replace("setReportDownloadPlanId('');", "setReportDownloadPlanId('');", 1)
-
-          # Add manpower/shift columns to the existing management table.
-          s = s.replace("<th>Line</th><th>Progress</th><th>Status</th>", "<th>Line / Shift</th><th>Shift Qty</th><th>Manpower</th><th>Progress</th><th>Status</th>")
-          s = s.replace("<td>{plan.production_line}</td><td><div className='manage-progress'>", "<td>{plan.production_line}<br/><small>{plan.shift_name||'Shift A'} · {plan.shift_start||'—'}–{plan.shift_end||'—'}</small></td><td>{Number(plan.shift_planned_qty??plan.planned_qty??0).toLocaleString()}</td><td>{Number(plan.manpower_count||0).toLocaleString()}</td><td><div className='manage-progress'>")
-
-          # Report description and filters become explicit about plan/date/shift/manpower.
-          s = s.replace("<p>Filter production plans and download the complete serial and scan-event history for any matching plan.</p>", "<p>Filter by production plan or production date and download planned, actual, pending, shift and manpower details.</p>")
-          s = s.replace("<label>From date", "<label>Production plan<select value={reportDownloadPlanId} onChange={e=>setReportDownloadPlanId(e.target.value)}><option value=''>All plans</option>{filteredReportPlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_date} · {plan.production_line} · {plan.model}</option>)}</select></label><label>From date", 1)
-
-          # Show a concise carry-forward banner on management rows.
-          s = s.replace("<small>{plan.brand||'—'} · {plan.model} · {target.toLocaleString()} units</small>", "<small>{plan.brand||'—'} · {plan.model} · Total {target.toLocaleString()} · Shift {Number(plan.shift_planned_qty??target).toLocaleString()} · Manpower {Number(plan.manpower_count||0).toLocaleString()}</small>{plan.carry_forward_from_plan_id&&<small className='carry-forward-note'>↳ Carry-forward from previous production plan · {Number(plan.carry_forward_qty||0).toLocaleString()} pending</small>}")
-
-          s = marker + "\n" + s
-          p.write_text(s)
-          print('V1.1 UI changes applied')
-      - name: Commit V1.1 UI
+          s=s.replace("<p className='planner-subtitle'>Set the production shift and hourly targets, then allocate a matching supplier serial batch. Only Draft plans can be edited.</p>", "<p className='planner-subtitle'>Upload the serial batch for the production requirement, then set the shift rate, hours and manpower. Shift capacity is calculated automatically and pending quantity carries forward.</p>",1)
+          s=s.replace("<p>Plan allocation: <b>{Number(form.planned_qty||0).toLocaleString()}</b> units. The first planned-quantity labels will be allocated.</p>", "<p>Production requirement: <b>{rows.length.toLocaleString()}</b> units. All uploaded serials are allocated to this production requirement.</p>",1)
+          s=s.replace("{rows.indexOf(r)<Number(form.planned_qty)?'Included':'Not allocated'}", "{'Included'}",1)
+          p.write_text(s,encoding='utf-8')
+          print('Final V1.1 planner UI patch applied')
+      - name: Commit V1.1 final UI
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/App.jsx
           git diff --cached --quiet && exit 0
-          git commit -m "Add V1.1 shift planning and manpower UI [v1.1-ui]"
+          git commit -m "Finalize V1.1 production requirement and hourly rate planning [v1.1-final-ui]"
           git push
