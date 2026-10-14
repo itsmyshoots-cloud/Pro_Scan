@@ -1,4 +1,4 @@
-name: Refine V1.1 reports and live planning
+name: Apply V1.1 planner final UI
 
 on:
   push:
@@ -8,53 +8,86 @@ permissions:
   contents: write
 
 jobs:
-  refine-v11:
-    if: ${{ !contains(github.event.head_commit.message, '[v1.1-report-fix]') }}
+  finalize-v11:
+    if: ${{ !contains(github.event.head_commit.message, '[v1.1-final-ui]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Refine reports and live shift metrics
+      - name: Apply final hourly-rate planner UI
         shell: python
         run: |
           from pathlib import Path
+          import re
+
           p=Path('src/App.jsx')
-          s=p.read_text()
-          marker='// V1.1 REPORT/LIVE REFINEMENT'
-          if marker in s: raise SystemExit(0)
+          s=p.read_text(encoding='utf-8')
 
-          # Do not overload the existing reportDownloadPlanId busy-state variable with filtering state.
-          bad="<label>Production plan<select value={reportDownloadPlanId} onChange={e=>setReportDownloadPlanId(e.target.value)}><option value=''>All plans</option>{filteredReportPlans.map(plan=><option key={plan.id} value={plan.id}>{plan.production_date} · {plan.production_line} · {plan.model}</option>)}</select></label>"
-          s=s.replace(bad,'')
+          if '// V1.1 HOURLY RATE FINAL UI' not in s:
+              s=s.replace('// V1.1 HOURLY PRODUCTION RATE','// V1.1 HOURLY RATE FINAL UI',1)
 
-          # Add an explicit production-plan filter to the report filter state.
-          s=s.replace("const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',product_name:'all'", "const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',plan_id:'all',product_name:'all'")
-          s=s.replace("const reportProductOptions=useMemo(()=>", "const reportPlanOptions=useMemo(()=>plans.map(plan=>({id:plan.id,label:(plan.production_date||'')+' · '+(plan.production_line||'')+' · '+(plan.model||'') })).sort((a,b)=>a.label.localeCompare(b.label)),[plans]);\n const reportProductOptions=useMemo(()=>")
-          s=s.replace("const filteredReportPlans=useMemo(()=>plans.filter(plan=>\n  (reportFilters.product_name", "const filteredReportPlans=useMemo(()=>plans.filter(plan=>\n  (reportFilters.plan_id==='all'||plan.id===reportFilters.plan_id)&&\n  (reportFilters.product_name")
-          s=s.replace("setReportFilters({type:'summary',group_by:'none',product_name:'all'", "setReportFilters({type:'summary',group_by:'none',plan_id:'all',product_name:'all'")
-          # Insert plan selector before product selector in report filters.
-          needle="<div className='report-filter-grid'><label>Product"
-          replacement="<div className='report-filter-grid'><label>Production plan<select value={reportFilters.plan_id||'all'} onChange={e=>setReportFilters({...reportFilters,plan_id:e.target.value})}><option value='all'>All production plans</option>{reportPlanOptions.map(option=><option value={option.id} key={option.id}>{option.label}</option>)}</select></label><label>Product"
-          s=s.replace(needle,replacement)
+          # Production requirement is always the uploaded serial batch.
+          s=re.sub(r"const \[form,setForm\]=useState\(\{production_date:new Date\(\)\.toISOString\(\)\.slice\(0,10\),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:\d+\}\);", "const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:0});", s, count=1)
+          s=s.replace("setForm({production_date:localDateKey(new Date()),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 1',planned_qty:500});", "setForm({production_date:localDateKey(new Date()),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 1',planned_qty:0});", 1)
+          s=s.replace("setShiftName('Shift A');setShiftStart('09:00');setShiftEnd('18:00');setHourlyProductionQty(500);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500));", "setShiftName('Shift A');setShiftStart('09:00');setShiftEnd('18:00');setHourlyProductionQty(100);setManpowerCount(0);setHourlyTargets(distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),100));", 1)
 
-          # Live monitoring should represent the quantity assigned to the current shift, not the whole multi-shift plan.
-          s=s.replace("const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0),[activePlans]);", "const activePlannedQty=useMemo(()=>activePlans.reduce((sum,plan)=>sum+Number(plan.shift_planned_qty??plan.planned_qty??0),0),[activePlans]);")
-          s=s.replace("const target=linePlans.reduce((sum,plan)=>sum+Number(plan.planned_qty||0),0);", "const target=linePlans.reduce((sum,plan)=>sum+Number(plan.shift_planned_qty??plan.planned_qty??0),0);")
+          upload_pattern=re.compile(r"validatePairs\(parsed\);setRows\(parsed\);setSourceFile\(f\.name\);setFileInfo\(pages\?'PDF · '\+pages\.toLocaleString\(\)+' pages':'Text/CSV file'\);.*?\n   \}",re.S)
+          upload_match=upload_pattern.search(s)
+          if upload_match and 'This is the production requirement' not in upload_match.group(0):
+              block=upload_match.group(0)
+              replacement="""validatePairs(parsed);setRows(parsed);setForm(previous=>({...previous,planned_qty:parsed.length}));setSourceFile(f.name);setFileInfo(pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file');
+   setMessage('Checking '+parsed.length.toLocaleString()+' serial-label pairs against existing production data…');
+   const conflicts=await checkDatabaseForConflicts(parsed,editingPlanId||'');setImportConflicts(conflicts);
+   if(conflicts.length)setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');
+   else setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. This is the production requirement; hourly capacity is calculated separately. No duplicates found in the database.');
+   }"""
+              s=s[:upload_match.start()]+replacement+s[upload_match.end():]
 
-          # Add shift/manpower/carry-forward fields to the detailed plan CSV report.
-          s=s.replace("'Production Line','Plan Status','Planned Quantity','Allocated Serials'", "'Production Line','Shift Name','Shift Start','Shift End','Manpower','Shift Planned Quantity','Carry Forward Quantity','Carry Forward From Plan','Plan Status','Planned Quantity','Allocated Serials'")
-          s=s.replace("'Production Line':plan.production_line||'','Plan Status':plan.status||'',", "'Production Line':plan.production_line||'','Shift Name':plan.shift_name||'Shift A','Shift Start':plan.shift_start||'','Shift End':plan.shift_end||'','Manpower':Number(plan.manpower_count||0),'Shift Planned Quantity':Number(plan.shift_planned_qty??plan.planned_qty??0),'Carry Forward Quantity':Number(plan.carry_forward_qty||0),'Carry Forward From Plan':plan.carry_forward_from_plan_id||'','Plan Status':plan.status||'',")
+          # Derive edit-mode rate from the hourly schedule, never from shift capacity.
+          s=s.replace("setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.shift_planned_qty ?? qty));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));", "setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? 0));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.hourly_targets?.[0]?.planned_qty??0)));", 1)
 
-          # Add the same fields to the report table so the page itself is understandable.
-          s=s.replace("<td><span className='report-line-pill'>{plan.production_line||'Unassigned'}</span></td>", "<td><span className='report-line-pill'>{plan.production_line||'Unassigned'}</span><small>{plan.shift_name||'Shift A'} · {plan.shift_start||'—'}–{plan.shift_end||'—'}</small></td>")
-          s=s.replace("<td><div className='report-progress-cell'>", "<td><div className='report-shift-meta'><strong>Shift {Number(plan.shift_planned_qty??plan.planned_qty??0).toLocaleString()}</strong><span>Manpower {Number(plan.manpower_count||0).toLocaleString()}</span>{plan.carry_forward_from_plan_id&&<span>Carry-forward {Number(plan.carry_forward_qty||0).toLocaleString()}</span>}</div><div className='report-progress-cell'>")
+          create_pattern=re.compile(r"const createPlan=async\(\)=>\{\s*const qty=Number\(form\.planned_qty\);.*?if\(!hourlyTargets\.length\)return setMessage\('Set a valid hourly shift window before creating the production plan\.'\);\s*const shiftQty=.*?;\s*if\(hourlyTargetTotal!==shiftQty\).*?;",re.S)
+          create_new="""const createPlan=async()=>{
+  const qty=Number(form.planned_qty||rows.length||0);
+  if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
+  if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
+  if(!Number.isInteger(qty)||qty<1)return setMessage('The uploaded serial batch is empty.');
+  if(qty!==rows.length)return setMessage('Production requirement must match the uploaded serial batch. Re-upload the complete batch.');
+  if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
+  const shiftQty=Math.max(0,Math.floor(Number(hourlyTargetTotal)||0));
+  const rate=Math.max(0,Math.floor(Number(hourlyProductionQty)||0));
+  if(!Number.isInteger(rate)||rate<1)return setMessage('Enter a production quantity per hour greater than zero.');
+  if(shiftQty!==rate*hourlyTargets.length)return setMessage('Hourly capacity does not match the configured production rate. Refresh the shift window and try again.');"""
+          s,n=create_pattern.subn(create_new,s,count=1)
+          if n==0:
+              raise SystemExit('Could not locate createPlan validation block')
 
-          s=marker+'\n'+s
-          p.write_text(s)
-      - name: Commit refinement
+          total_field=re.compile(r"\s*<label>Total planned quantity<input type='number' min='1' value=\{form\.planned_qty\} onChange=\{e=>\{const value=e\.target\.value;setForm\(\{\.\.\.form,planned_qty:value\}\);\}\}/></label>\n")
+          s=total_field.sub('\n',s,count=1)
+
+          hourly_old="<input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/>"
+          hourly_new="<input type='number' min='0' step='1' value={row.planned_qty} readOnly aria-label={getHourlySlotLabel(row.hour)+' production target'} />"
+          if hourly_old in s:
+              s=s.replace(hourly_old,hourly_new,1)
+          elif 'readOnly aria-label={getHourlySlotLabel(row.hour)' not in s:
+              raise SystemExit('Could not locate hourly target input')
+
+          summary=re.compile(r"<div className='hourly-target-summary'>.*?</div>",re.S)
+          summary_new="<div className='hourly-target-summary'><div><span>Shift capacity</span><strong>{hourlyTargetTotal.toLocaleString()}</strong></div><div><span>Production requirement</span><strong>{Number(form.planned_qty||rows.length||0).toLocaleString()}</strong></div><span className={hourlyTargetTotal>0&&hourlyTargetTotal<Number(form.planned_qty||rows.length||0)?'target-mismatch':'target-match'}>{hourlyTargetTotal>0&&hourlyTargetTotal<Number(form.planned_qty||rows.length||0)?'↳ '+(Number(form.planned_qty||rows.length||0)-hourlyTargetTotal).toLocaleString()+' units remain after this shift and carry forward automatically':'✓ Hourly capacity calculated from the shift rate'}</span></div>"
+          s,n=summary.subn(summary_new,s,count=1)
+          if n==0:
+              raise SystemExit('Could not locate hourly target summary')
+
+          s=s.replace("<p className='planner-subtitle'>Set the production shift and hourly targets, then allocate a matching supplier serial batch. Only Draft plans can be edited.</p>", "<p className='planner-subtitle'>Upload the serial batch for the production requirement, then set the shift rate, hours and manpower. Shift capacity is calculated automatically and pending quantity carries forward.</p>",1)
+          s=s.replace("<p>Plan allocation: <b>{Number(form.planned_qty||0).toLocaleString()}</b> units. The first planned-quantity labels will be allocated.</p>", "<p>Production requirement: <b>{rows.length.toLocaleString()}</b> units. All uploaded serials are allocated to this production requirement.</p>",1)
+          s=s.replace("{rows.indexOf(r)<Number(form.planned_qty)?'Included':'Not allocated'}", "{'Included'}",1)
+
+          p.write_text(s,encoding='utf-8')
+          print('V1.1 final planner UI patch applied')
+      - name: Commit final UI
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/App.jsx
           git diff --cached --quiet && exit 0
-          git commit -m "Refine V1.1 reports and live shift metrics [v1.1-report-fix]"
+          git commit -m "Finalize V1.1 planner hourly rate UI [v1.1-final-ui]"
           git push
