@@ -45,22 +45,13 @@ function minutesToClock(totalMinutes){const minute=((Number(totalMinutes)||0)%(2
 function planShiftLabel(plan){const shift=getPlanShiftWindow(plan);return shift?formatClock12(minutesToClock(shift.start))+' – '+formatClock12(minutesToClock(shift.end)):'Shift not set';}
 function distributeHourlyTargetsEvenly(targets,total){
  const source=Array.isArray(targets)?targets:[];
- const targetTotal=Math.max(0,Math.floor(Number(total)||0));
- if(!source.length)return [];
- const base=Math.floor(targetTotal/source.length);
- const remainder=targetTotal%source.length;
- return source.map((row,index)=>({...row,planned_qty:base+(index<remainder?1:0)}));
+ const hourlyRate=Math.max(0,Math.floor(Number(total)||0));
+ return source.map(row=>({...row,planned_qty:hourlyRate}));
 }
 function rebalanceHourlyTargets(targets,total){
- const source=Array.isArray(targets)?targets:[],targetTotal=Math.max(0,Math.floor(Number(total)||0));
- if(!source.length)return [];
- const entered=source.map(row=>Math.max(0,Number(row.planned_qty)||0));let weights=entered,weightTotal=entered.reduce((sum,value)=>sum+value,0);
- if(weightTotal<=0){weights=source.map(()=>1);weightTotal=weights.length;}
- const quotas=weights.map(value=>targetTotal*value/weightTotal),allocated=quotas.map(Math.floor);
- const remainder=targetTotal-allocated.reduce((sum,value)=>sum+value,0);
- const order=quotas.map((value,index)=>({index,fraction:value-Math.floor(value)})).sort((a,b)=>b.fraction-a.fraction);
- for(let i=0;i<remainder;i++)allocated[order[i%order.length].index]+=1;
- return source.map((row,index)=>({...row,planned_qty:allocated[index]}));
+ const source=Array.isArray(targets)?targets:[];
+ const hourlyRate=Math.max(0,Math.floor(Number(total)||0));
+ return source.map(row=>({...row,planned_qty:hourlyRate}));
 }
 function getLocalMinutes(date){return date.getHours()*60+date.getMinutes();}
 function buildPlanHourlyRows(plan,serialRows){
@@ -160,8 +151,8 @@ export default function App({user}){
  const [usersError,setUsersError]=useState('');
  const [usersNotice,setUsersNotice]=useState('');
  const [passwordResetTarget,setPasswordResetTarget]=useState(null); const [passwordResetValue,setPasswordResetValue]=useState(''); const [passwordResetConfirm,setPasswordResetConfirm]=useState(''); const [plans,setPlans]=useState([]); const [selectedPlan,setSelectedPlan]=useState(null); const [showPlanSetup,setShowPlanSetup]=useState(true); const [editingPlanId,setEditingPlanId]=useState(''); const [rows,setRows]=useState([]); const [sourceFile,setSourceFile]=useState(''); const [fileInfo,setFileInfo]=useState(''); const [busy,setBusy]=useState(false); const [message,setMessage]=useState('');
- const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:500});
- const operator='Operator'; const scannerInputRef=useRef(null); const completingPlanRef=useRef(false); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',plan_id:'all',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftName,setShiftName]=useState('Shift A'); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyProductionQty,setHourlyProductionQty]=useState(100); const [manpowerCount,setManpowerCount]=useState(0); const [hourlyTargets,setHourlyTargets]=useState(()=>distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [realtimeConnected,setRealtimeConnected]=useState(false); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [manageFilters,setManageFilters]=useState({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'}); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false); const productionChannelRef=useRef(null); const realtimeRefreshRef=useRef({});
+ const [form,setForm]=useState({production_date:new Date().toISOString().slice(0,10),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:0});
+ const operator='Operator'; const scannerInputRef=useRef(null); const completingPlanRef=useRef(false); const scanInFlightRef=useRef(false); const scanQueueRef=useRef([]); const scanQueueBusyRef=useRef(false); const [scannerReady,setScannerReady]=useState(false); const [scannerInputValue,setScannerInputValue]=useState(''); const [planSerials,setPlanSerials]=useState([]); const [duplicateScans,setDuplicateScans]=useState([]); const [detailsPanel,setDetailsPanel]=useState(''); const [detailsSearch,setDetailsSearch]=useState(''); const [duplicateWarning,setDuplicateWarning]=useState(null); const [now,setNow]=useState(new Date()); const [lastScanAt,setLastScanAt]=useState(null); const [reportFilters,setReportFilters]=useState({type:'summary',group_by:'none',plan_id:'all',product_name:'all',brand:'all',model:'all',production_line:'all',status:'all',search:'',date_from:'',date_to:'',month:'all'}); const [reportDownloadPlanId,setReportDownloadPlanId]=useState(''); const [reportDownloadMessage,setReportDownloadMessage]=useState(''); const [reportDownloadError,setReportDownloadError]=useState(''); const [dashboardHourlyPlanId,setDashboardHourlyPlanId]=useState(''); const [shiftName,setShiftName]=useState('Shift A'); const [shiftStart,setShiftStart]=useState('09:00'); const [shiftEnd,setShiftEnd]=useState('18:00'); const [hourlyProductionQty,setHourlyProductionQty]=useState(100); const [manpowerCount,setManpowerCount]=useState(0); const [hourlyTargets,setHourlyTargets]=useState(()=>distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),100)); const [importConflicts,setImportConflicts]=useState([]); const [selectedMonitoringLine,setSelectedMonitoringLine]=useState(''); const [selectedMonitoringPlanId,setSelectedMonitoringPlanId]=useState(''); const [monitoringSerials,setMonitoringSerials]=useState([]); const [monitoringUpdatedAt,setMonitoringUpdatedAt]=useState(null); const [realtimeConnected,setRealtimeConnected]=useState(false); const [monitoringBusy,setMonitoringBusy]=useState(false); const [monitoringError,setMonitoringError]=useState(''); const [duplicateEventCount,setDuplicateEventCount]=useState(0); const [planStatusFilter,setPlanStatusFilter]=useState('all'); const [manageFilters,setManageFilters]=useState({date_from:'',date_to:'',month:'all',model:'all',production_line:'all'}); const [statusUpdatingId,setStatusUpdatingId]=useState(''); const monitoringRefreshRef=useRef(false); const productionChannelRef=useRef(null); const realtimeRefreshRef=useRef({});
  const load=async()=>{try{await supabase.rpc('ensure_production_carry_forward',{p_target_date:localDateKey(new Date())});}catch{} const {data,error}=await supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(200);if(error){setMessage(error.message);return;}if(data)setPlans(data)};
  const fetchAllRows=async queryBuilder=>{
   const rows=[];let offset=0;
@@ -287,7 +278,7 @@ export default function App({user}){
   const shift=getPlanShiftWindow(plan),startValue=shift?minutesToClock(shift.start):'09:00',endValue=shift?minutesToClock(shift.end):'18:00';
   const schedule=createHourlyTargets(startValue,endValue,Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]),qty=Number(plan.planned_qty||0);
   setEditingPlanId(plan.id);setForm({production_date:plan.production_date||localDateKey(new Date()),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',production_line:plan.production_line||lines[0],planned_qty:qty});
-  setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.shift_planned_qty ?? qty));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));
+  setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? (Number(plan.shift_planned_qty||0)/Math.max(1,Array.isArray(plan.hourly_targets)?plan.hourly_targets.length:1))));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.hourly_targets?.[0]?.planned_qty ?? 0)));
   setRows(allocated.map(row=>({label_number:row.label_number,serial_number:row.serial_number})));
   setSourceFile(allocated.length?'Existing Draft Plan Allocation':'');setFileInfo(allocated.length?allocated.length.toLocaleString()+' allocated serials loaded':'No serial allocation found — upload a supplier file');
   setImportConflicts([]);setMessage('');setBusy(false);setView('planner');
@@ -470,7 +461,7 @@ export default function App({user}){
    }
    const serialKeys=new Set();
    const headers=[
-    'Record Type','Exported At (IST)','Plan ID','Production Date','Brand','Product','Model','Production Line','Shift Name','Shift Start','Shift End','Manpower','Shift Planned Quantity','Carry Forward Quantity','Carry Forward From Plan','Plan Status','Planned Quantity','Allocated Serials','Actual Scanned','Pending Serials','Completion Percent','Plan Created At (IST)','Hourly Targets JSON',
+    'Record Type','Exported At (IST)','Plan ID','Production Date','Brand','Product','Model','Production Line','Shift Name','Shift Start','Shift End','Manpower','Shift Capacity','Carry Forward Quantity','Carry Forward From Plan','Plan Status','Planned Quantity','Allocated Serials','Actual Scanned','Pending Serials','Completion Percent','Plan Created At (IST)','Hourly Targets JSON',
     'Serial Sequence','Label Number','Serial Number','Serial Status','Serial Scanned At (IST)','Scanned By','Serial Record Created At (IST)',
     'Scan Event ID','Scan Event Status','Scan Event Time (IST)','Scan Event Operator','Scan Event Production Line','Serial Number ID'
    ];
@@ -558,7 +549,8 @@ export default function App({user}){
   if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
   if(!Number.isInteger(qty)||qty<1)return setMessage('Planned quantity must be a whole number greater than zero.');
   if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
-  const shiftQty=Math.max(0,Math.floor(Number(shiftPlannedQty)||0)); if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed total planned quantity.'); if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal shift planned quantity ('+shiftQty.toLocaleString()+').');
+  const rate=Math.max(0,Math.floor(Number(hourlyProductionQty)||0));
+ const shiftQty=rate*hourlyTargets.length; if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed total planned quantity.'); if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal shift planned quantity ('+shiftQty.toLocaleString()+').');
   if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
   if(qty>rows.length)return setMessage('Planned quantity ('+qty.toLocaleString()+') exceeds available serials ('+rows.length.toLocaleString()+'). Upload a serial file with at least '+qty.toLocaleString()+' unique pairs.');
   if(importConflicts.length)return setMessage('Plan creation blocked: '+importConflicts.length.toLocaleString()+' serial/label pairs in this upload already exist in the database.');
@@ -849,7 +841,7 @@ export default function App({user}){
   <label>Product<input value={form.product_name} onChange={e=>setForm({...form,product_name:e.target.value})} placeholder='e.g. LifeLong OTG'/></label>
   <label>Model<input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} placeholder='e.g. RCAD60'/></label>
   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(x=><option key={x}>{x}</option>)}</select></label>
-  <label>Total planned quantity<input type='number' min='1' value={form.planned_qty} onChange={e=>{const value=e.target.value;setForm({...form,planned_qty:value});}}/></label>
+  <label>Production requirement<input type='number' min='1' value={form.planned_qty} onChange={e=>{const value=e.target.value;setForm({...form,planned_qty:value});}}/></label>
  </div>
  <section className='hourly-target-editor'>
   <div className='hourly-editor-head'><div><span className='eyebrow'>SHIFT PRODUCTION RATE</span><h3>Set production quantity per hour</h3><p>Enter the expected production quantity per hour. The shift capacity is calculated from the available hours; the remaining quantity from the total plan can carry forward to the next available shift.</p></div>
