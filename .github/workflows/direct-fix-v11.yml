@@ -1,0 +1,70 @@
+name: Direct V1.1 planner fix
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch planner source
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('src/App.jsx')
+          s = p.read_text(encoding='utf-8')
+          original = s
+
+          s = s.replace("planned_qty:500", "planned_qty:0", 1)
+          s = s.replace("useState(()=>distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),500))", "useState(()=>distributeHourlyTargetsEvenly(createHourlyTargets('09:00','18:00'),100))", 1)
+
+          old_dist = '''function distributeHourlyTargetsEvenly(targets,total){\n const source=Array.isArray(targets)?targets:[];\n const targetTotal=Math.max(0,Math.floor(Number(total)||0));\n if(!source.length)return [];\n const base=Math.floor(targetTotal/source.length);\n const remainder=targetTotal%source.length;\n return source.map((row,index)=>({...row,planned_qty:base+(index<remainder?1:0)}));\n}'''
+          new_dist = '''function distributeHourlyTargetsEvenly(targets,total){\n const source=Array.isArray(targets)?targets:[];\n const hourlyRate=Math.max(0,Math.floor(Number(total)||0));\n return source.map(row=>({...row,planned_qty:hourlyRate}));\n}'''
+          if old_dist in s: s = s.replace(old_dist, new_dist, 1)
+          else: raise SystemExit('Expected distributeHourlyTargetsEvenly implementation was not found')
+
+          old_rebalance = '''function rebalanceHourlyTargets(targets,total){\n const source=Array.isArray(targets)?targets:[],targetTotal=Math.max(0,Math.floor(Number(total)||0));\n if(!source.length)return [];\n const entered=source.map(row=>Math.max(0,Number(row.planned_qty)||0));let weights=entered,weightTotal=entered.reduce((sum,value)=>sum+value,0);\n if(weightTotal<=0){weights=source.map(()=>1);weightTotal=weights.length;}\n const quotas=weights.map(value=>targetTotal*value/weightTotal),allocated=quotas.map(Math.floor);\n const remainder=targetTotal-allocated.reduce((sum,value)=>sum+value,0);\n const order=quotas.map((value,index)=>({index,fraction:value-Math.floor(value)})).sort((a,b)=>b.fraction-a.fraction);\n for(let i=0;i<remainder;i++)allocated[order[i%order.length].index]+=1;\n return source.map((row,index)=>({...row,planned_qty:allocated[index]}));\n}'''
+          new_rebalance = '''function rebalanceHourlyTargets(targets,total){\n const source=Array.isArray(targets)?targets:[];\n const hourlyRate=Math.max(0,Math.floor(Number(total)||0));\n return source.map(row=>({...row,planned_qty:hourlyRate}));\n}'''
+          if old_rebalance in s: s = s.replace(old_rebalance, new_rebalance, 1)
+          else: raise SystemExit('Expected rebalanceHourlyTargets implementation was not found')
+
+          s, n = re.subn(r"if\(currentQty>parsed\.length\)setForm\(current=>\(\{\.\.\.current,planned_qty:parsed\.length\}\)\);", "setForm(current=>({...current,planned_qty:parsed.length}));", s, count=1)
+          if n == 0:
+              s, n = re.subn(r"if\s*\(\s*currentQty\s*>\s*parsed\.length\s*\)\s*setForm\(current\s*=>\s*\(\{\.\.\.current\s*,\s*planned_qty\s*:\s*parsed\.length\s*\}\)\s*\);", "setForm(current=>({...current,planned_qty:parsed.length}));", s, count=1)
+
+          s = re.subn(r"<input([^>]*?)type=\"number\"([^>]*?planned_qty[^>]*?)>", r"<input\1type=\"number\"\2 readOnly>", s)[0]
+          s = s.replace("const shiftQty=Math.max(0,Math.floor(Number(shiftPlannedQty)||0));", "const rate=Math.max(0,Math.floor(Number(hourlyProductionQty)||0));\n const shiftQty=rate*hourlyTargets.length;", 1)
+          s = s.replace("if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed production requirement.');", "", 1)
+          s = s.replace("if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly targets must add up to the shift planned quantity.');", "if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly capacity must equal production quantity/hour × available hours.');", 1)
+          s = re.sub(r"setHourlyProductionQty\(Number\(plan\.shift_planned_qty\s*\?\?\s*qty\)\);", "setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? (Number(plan.shift_planned_qty||0)/Math.max(1,Array.isArray(plan.hourly_targets)?plan.hourly_targets.length:1))));", s, count=1)
+          s = re.sub(r"Number\(plan\.shift_planned_qty\s*\?\?\s*qty\)", "Number(plan.hourly_targets?.[0]?.planned_qty ?? 0)", s, count=1)
+          s = s.replace('Total planned quantity', 'Production requirement', 1)
+          s = s.replace('Shift Planned Quantity', 'Shift Capacity', 1)
+
+          if s == original: raise SystemExit('No source changes were made')
+          p.write_text(s, encoding='utf-8')
+          print('Planner source patched.')
+
+      - name: Verify build
+        run: |
+          npm install
+          npm run build
+
+      - name: Commit source fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx
+          git diff --cached --check
+          git commit -m "Fix V1.1 hourly rate planning directly in App.jsx"
+          git push origin HEAD:fix-v11-hourly-rate-direct
