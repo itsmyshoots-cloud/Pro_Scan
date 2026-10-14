@@ -15,3 +15,5 @@ Do not commit service-role keys or other secrets.
 
 ## V1.1
 Production planning uses uploaded serial-batch quantity as the production requirement. Shift capacity is derived from production quantity/hour × available shift hours, with manpower stored on the plan.
+
+V1.1 planner finalization in progress.
