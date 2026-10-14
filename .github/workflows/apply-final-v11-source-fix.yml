@@ -1,0 +1,68 @@
+name: Apply final V1.1 planner source fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch App.jsx
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('src/App.jsx')
+          s=p.read_text(encoding='utf-8')
+          if '// V1.1 FINAL PLANNER SOURCE FIX' in s:
+              print('already fixed')
+              raise SystemExit(0)
+          s=s.replace('// V1.1 HOURLY PRODUCTION RATE','// V1.1 FINAL PLANNER SOURCE FIX',1)
+          s=re.sub(r"(const \[form,setForm\]=useState\(\{production_date:new Date\(\)\.toISOString\(\)\.slice\(0,10\),brand:'LifeLong',product_name:'LifeLong OTG',model:'RCAD60',production_line:'Line 2',planned_qty:)\d+(\}\);)",r"\g<1>0\g<2>",s,count=1)
+          old="""   const currentQty=Number(form.planned_qty||0);
+    if(currentQty>parsed.length){
+     setForm(previous=>({...previous,planned_qty:parsed.length}));setHourlyTargets(previous=>rebalanceHourlyTargets(previous,parsed.length));
+     setMessage('Planned quantity adjusted to '+parsed.length.toLocaleString()+' to match the available serials. Hourly targets were rebalanced; review them before saving.');
+    }else setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');"""
+          new="""   setForm(previous=>({...previous,planned_qty:parsed.length}));
+    setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. This is the production requirement; shift capacity is calculated separately. No duplicates found in the database.');"""
+          if old not in s: raise SystemExit('upload block not found')
+          s=s.replace(old,new,1)
+          s=s.replace("setHourlyProductionQty(Number(plan.shift_planned_qty ?? qty));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.shift_planned_qty??qty)));","setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? 0));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.hourly_targets?.[0]?.planned_qty??0)));",1)
+          pat=re.compile(r"const createPlan=async\(\)=>\{\s*const qty=Number\(form\.planned_qty\);.*?if\(!hourlyTargets\.length\).*?;\s*const shiftQty=.*?;\s*if\(shiftQty>qty\).*?;\s*if\(hourlyTargetTotal!==shiftQty\).*?;",re.S)
+          repl="""const createPlan=async()=>{
+  const qty=Number(form.planned_qty||rows.length||0);
+  if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
+  if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
+  if(!Number.isInteger(qty)||qty<1)return setMessage('The uploaded serial batch is empty.');
+  if(qty!==rows.length)return setMessage('Production requirement must match the uploaded serial batch. Re-upload the complete batch.');
+  if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
+  const rate=Math.max(0,Math.floor(Number(hourlyProductionQty)||0));
+  const shiftQty=Math.max(0,Math.floor(Number(hourlyTargetTotal)||0));
+  if(rate<1)return setMessage('Enter a production quantity per hour greater than zero.');
+  if(shiftQty!==rate*hourlyTargets.length)return setMessage('Hourly capacity does not match the configured production rate. Refresh the shift window and try again.');"""
+          s,n=pat.subn(repl,s,count=1)
+          if n!=1: raise SystemExit('createPlan block not found')
+          s,n=re.subn(r"\s*<label>Total planned quantity<input type='number' min='1' value=\{form\.planned_qty\} onChange=\{e=>\{const value=e\.target\.value;setForm\(\{\.\.\.form,planned_qty:value\}\);\}\}/></label>",'',s,count=1)
+          hourly="<input type='number' min='0' step='1' value={row.planned_qty} onChange={e=>{const value=e.target.value;setHourlyTargets(previous=>previous.map(target=>target.hour===row.hour?{...target,planned_qty:value===''?'':Math.max(0,Math.floor(Number(value)||0))}:target));}}/>"
+          if hourly not in s: raise SystemExit('hourly input not found')
+          s=s.replace(hourly,"<input type='number' min='0' step='1' value={row.planned_qty} readOnly aria-label={getHourlySlotLabel(row.hour)+' production target'} />",1)
+          s=s.replace("<div><span>Total planned quantity</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div>","<div><span>Production requirement</span><strong>{Number(form.planned_qty||rows.length||0).toLocaleString()}</strong></div>",1)
+          s=s.replace("Plan allocation: <b>{Number(form.planned_qty||0).toLocaleString()}</b> units. The first planned-quantity labels will be allocated.","Production requirement: <b>{rows.length.toLocaleString()}</b> units. All uploaded serials are allocated to this production requirement.",1)
+          s=s.replace("{rows.indexOf(r)<Number(form.planned_qty)?'Included':'Not allocated'}","{'Included'}",1)
+          p.write_text(s,encoding='utf-8')
+          print('planner patch written')
+          PY
+      - name: Commit source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Finalize V1.1 planner source fix [v1.1-final-ui]"
+          git push
