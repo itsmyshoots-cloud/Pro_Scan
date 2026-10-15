@@ -1,0 +1,85 @@
+name: Refine carry-forward UI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/App.jsx'
+      - 'scripts/apply-carry-forward.mjs'
+      - '.github/workflows/refine-carry-forward-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch carry-forward UI
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'src/App.jsx';
+          let source = fs.readFileSync(file, 'utf8');
+          const floatingStart = source.indexOf("\n useEffect(()=>{\n  if(typeof document==='undefined'||document.getElementById('proscan-carry-forward-live'))return;");
+          const fetchMarker = " const fetchAllRows=async queryBuilder=>{";
+          if (floatingStart >= 0) {
+            const fetchIndex = source.indexOf(fetchMarker, floatingStart);
+            if (fetchIndex < 0) throw new Error('Old carry-forward UI end marker not found');
+            source = source.slice(0, floatingStart) + '\n' + source.slice(fetchIndex);
+          }
+          const returnMarker = " return <div className={'app '+(view==='operator'?'app-operator':'')}>";
+          if (!source.includes(" const operatorShiftCapacity=")) {
+            const capacityBlock = `\n const operatorShiftCapacity=Number(selectedPlan?.shift_planned_qty??(Array.isArray(selectedPlan?.hourly_targets)?selectedPlan.hourly_targets.reduce((sum,row)=>sum+Math.max(0,Number(row.planned_qty||0)),0):0));\n const operatorRequirement=Number(selectedPlan?.planned_qty||0);\n const operatorScanned=scannedSerials.length;\n const operatorBatchRemaining=Math.max(0,operatorRequirement-operatorScanned);\n const operatorShiftRemaining=Math.max(0,operatorShiftCapacity-operatorScanned);\n const operatorProjectedCarry=Math.max(0,operatorRequirement-Math.max(operatorShiftCapacity,operatorScanned));\n`;
+            if (!source.includes(returnMarker)) throw new Error('Operator return marker not found');
+            source = source.replace(returnMarker, capacityBlock + returnMarker);
+          }
+          source = source.replace("<div className='operator-assignment-details'><span>{selectedPlan.production_line}</span><i/> <span>{planShiftLabel(selectedPlan)}</span><i/> <span>{Number(selectedPlan.planned_qty||0).toLocaleString()} units</span><i/> <span>#{selectedPlan.id.slice(0,8)}</span></div>","<div className='operator-assignment-details'><span>{selectedPlan.production_line}</span><i/> <span>{planShiftLabel(selectedPlan)}</span><i/> <span>Shift capacity {operatorShiftCapacity.toLocaleString()} units</span><i/> <span>Batch requirement {operatorRequirement.toLocaleString()}</span><i/> <span>#{selectedPlan.id.slice(0,8)}</span></div>");
+          source = source.replace(/<section className='operator-plan-progress-card'>[\s\S]*?<\/section>\n   <div className='operator-workstation-metrics'>/,`<section className='operator-plan-progress-card'>
+    <div className='operator-side-card-heading'><span>SHIFT PROGRESS</span><strong>{operatorShiftCapacity?Math.min(100,Math.round(operatorScanned/operatorShiftCapacity*100)):0}%</strong></div>
+    <div className='operator-progress-track'><div style={{width:(operatorShiftCapacity?Math.min(100,operatorScanned/operatorShiftCapacity*100):0)+'%'}}/></div>
+    <div className='operator-progress-numbers'><div><span>Scanned</span><strong>{operatorScanned.toLocaleString()}</strong></div><div><span>Shift remaining</span><strong>{operatorShiftRemaining.toLocaleString()}</strong></div><div><span>Shift capacity</span><strong>{operatorShiftCapacity.toLocaleString()}</strong></div></div>
+   </section>
+   <div className='operator-workstation-metrics'>`);
+          source = source.replace(/<div className='operator-workstation-metrics'>[\s\S]*?<\/div>\n   <section className='operator-shift-info'>/,`<div className='operator-workstation-metrics'>
+    <button type='button' className='operator-workstation-metric metric-planned'><span>SHIFT CAPACITY</span><strong>{operatorShiftCapacity.toLocaleString()}</strong><small>Production capacity for this shift</small></button>
+    <button type='button' className='operator-workstation-metric metric-scanned' onClick={()=>{setDetailsPanel('scanned');setDetailsSearch('');}}><span>SCANNED QTY</span><strong>{operatorScanned.toLocaleString()}</strong><small>Units completed in this shift</small></button>
+    <button type='button' className='operator-workstation-metric metric-pending' onClick={()=>{setDetailsPanel('remaining');setDetailsSearch('');}}><span>BATCH REMAINING</span><strong>{operatorBatchRemaining.toLocaleString()}</strong><small>Remaining serials in this production batch</small></button>
+    <button type='button' className='operator-workstation-metric metric-duplicates' onClick={()=>setMessage(operatorProjectedCarry>0?operatorProjectedCarry.toLocaleString()+' units are available for carry-forward if this shift closes unfinished.':'No carry-forward quantity is currently expected.')}><span>CARRY FORWARD</span><strong>{operatorProjectedCarry.toLocaleString()}</strong><small>{operatorProjectedCarry>0?'Available for the next shift':'No carry-forward expected'}</small></button>
+   </div>
+   <section className='operator-shift-info'>`);
+          source = source.replace(/<section className='operator-shift-info'>[\s\S]*?<\/section>\n  <\/aside>/,`<section className='operator-shift-info'>
+    <div><span>SHIFT WINDOW</span><strong>{planShiftLabel(selectedPlan)}</strong></div>
+    <div><span>PRODUCTION LINE</span><strong>{selectedPlan.production_line}</strong></div>
+    <div><span>SHIFT CAPACITY</span><strong>{operatorShiftCapacity.toLocaleString()} units</strong></div>
+    <div><span>BATCH REQUIREMENT</span><strong>{operatorRequirement.toLocaleString()} units</strong></div>
+    <div><span>CARRY FORWARD</span><strong>{operatorProjectedCarry.toLocaleString()} units</strong></div>
+    <div><span>PLAN STATUS</span><strong className={'operator-status-text status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</strong></div>
+   </section>
+  </aside>`);
+          const manageHeader="<th>Date</th><th>Product / Model</th><th>Line / Shift</th><th>Shift Capacity</th><th>Manpower</th><th>Progress</th><th>Status</th><th>Actions</th>";
+          if(source.includes(manageHeader))source=source.replace(manageHeader,"<th>Date</th><th>Product / Model</th><th>Line / Shift</th><th>Shift Capacity</th><th>Manpower</th><th>Progress</th><th>Status</th><th>Carry Forward</th><th>Actions</th>");
+          const manageCalc="const target=Number(plan.planned_qty||0);const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}>";
+          if(source.includes(manageCalc))source=source.replace(manageCalc,"const target=Number(plan.planned_qty||0);const capacity=Number(plan.shift_planned_qty??target);const projectedCarry=Math.max(0,target-Math.max(capacity,scanned));const sourcePlan=plan.carry_forward_from_plan_id?plans.find(item=>item.id===plan.carry_forward_from_plan_id):null;const nextPlan=plan.carry_forward_plan_id?plans.find(item=>item.id===plan.carry_forward_plan_id):null;const pct=target?Math.round(scanned/target*100):0;return <tr key={plan.id}>");
+          const manageActionMarker="<td><div className='table-actions'>{plan.status==='draft'&&";
+          if(source.includes(manageActionMarker)&&!source.includes("className='carry-forward-cell'"))source=source.replace(manageActionMarker,"<td><div className='carry-forward-cell'>{plan.carry_forward_from_plan_id?<><strong>↳ Received {Number(plan.carry_forward_qty||0).toLocaleString()}</strong><small>{sourcePlan?.production_date||'Previous plan'} · pending moved into this shift</small></>:nextPlan?<><strong>→ Moved {Number(plan.carry_forward_qty||0).toLocaleString()}</strong><small>Into {nextPlan.production_date||'next plan'} · {nextPlan.shift_name||'next shift'}</small></>:projectedCarry>0?<><strong>{projectedCarry.toLocaleString()} available</strong><small>Carry forward if this shift closes unfinished</small></>:<small>No carry-forward expected</small>}</div></td>"+manageActionMarker);
+          const livePlanSmall="<div className='line-plan-hourly-heading'><div><strong>{plan.product_name}</strong><span>{plan.brand||'—'} · {plan.model} · {planShiftLabel(plan)}</span></div><small>{Number(plan.planned_qty||0).toLocaleString()} units</small></div>";
+          if(source.includes(livePlanSmall))source=source.replace(livePlanSmall,"<div className='line-plan-hourly-heading'><div><strong>{plan.product_name}</strong><span>{plan.brand||'—'} · {plan.model} · {planShiftLabel(plan)}</span></div><small>Capacity {Number(plan.shift_planned_qty??plan.planned_qty??0).toLocaleString()} · Requirement {Number(plan.planned_qty||0).toLocaleString()} · Carry forward {Math.max(0,Number(plan.planned_qty||0)-Number(plan.shift_planned_qty??plan.planned_qty??0)).toLocaleString()}</small></div>");
+          fs.writeFileSync(file,source);
+          console.log('Carry-forward refinement applied');
+          NODE
+      - name: Verify build
+        run: npm install && npm run build
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet; then echo 'No source changes were necessary.'; exit 0; fi
+          git add src/App.jsx
+          git commit -m 'Fix carry-forward display in plans and operator'
+          git push origin HEAD:main
