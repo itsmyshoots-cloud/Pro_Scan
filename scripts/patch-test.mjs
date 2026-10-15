@@ -1,1 +1,0 @@
-const x={a:1}; const y=x?.a??0; console.log(y); const r=/a[\s\S]*b/; console.log(r);
