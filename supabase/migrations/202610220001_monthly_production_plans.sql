@@ -39,7 +39,7 @@ create index if not exists monthly_plan_serials_plan_idx
 alter table public.monthly_production_plans enable row level security;
 alter table public.monthly_plan_serials enable row level security;
 
-grant select, insert, update on public.monthly_production_plans to anon, authenticated;
+grant select, insert, update, delete on public.monthly_production_plans to anon, authenticated;
 grant select, insert on public.monthly_plan_serials to anon, authenticated;
 
 drop policy if exists "custom role read monthly plans" on public.monthly_production_plans;
@@ -57,6 +57,11 @@ create policy "custom management update monthly plans"
 on public.monthly_production_plans for update to anon, authenticated
 using (private.custom_app_role() in ('planner','super_admin'))
 with check (private.custom_app_role() in ('planner','super_admin'));
+
+drop policy if exists "custom management delete monthly plans" on public.monthly_production_plans;
+create policy "custom management delete monthly plans"
+on public.monthly_production_plans for delete to anon, authenticated
+using (private.custom_app_role() in ('planner','super_admin'));
 
 drop policy if exists "custom role read monthly serials" on public.monthly_plan_serials;
 create policy "custom role read monthly serials"
