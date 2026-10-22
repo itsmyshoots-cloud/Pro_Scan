@@ -1,0 +1,17 @@
+import fs from 'fs';
+const file='src/App.jsx';
+let source=fs.readFileSync(file,'utf8');
+const old=" const {count,error}=await supabase.from('plan_serials').select('id',{count:'exact',head:true}).eq('monthly_plan_id',monthlyId);";
+const replacement=" const {data,error}=await supabase.rpc('get_monthly_plan_available_qty',{p_monthly_plan_id:monthlyId});";
+if(!source.includes(old))throw new Error('Daily availability query anchor not found.');
+source=source.replace(old,replacement);
+const oldBlock="  if(error){setDailyMessage('Could not check monthly serial usage: '+error.message);return;}\n  setDailyAvailableQty(Math.max(0,Number(plan.total_qty||0)-Number(count||0)));";
+const newBlock="  if(error){setDailyMessage('Could not check monthly serial usage: '+error.message);return;}\n  setDailyAvailableQty(Math.max(0,Number(data||0)));";
+if(!source.includes(oldBlock))throw new Error('Daily availability result anchor not found.');
+source=source.replace(oldBlock,newBlock);
+const oldPrepare="  const {count,error}=await supabase.from('plan_serials').select('id',{count:'exact',head:true}).eq('monthly_plan_id',monthlyId);\n  if(error){setDailyAvailableQty(0);setDailyMessage('Could not check monthly serial usage: '+error.message);return;}\n  const available=Math.max(0,Number(plan.total_qty||0)-Number(count||0));";
+const newPrepare="  const {data,error}=await supabase.rpc('get_monthly_plan_available_qty',{p_monthly_plan_id:monthlyId});\n  if(error){setDailyAvailableQty(0);setDailyMessage('Could not check monthly serial usage: '+error.message);return;}\n  const available=Math.max(0,Number(data||0));";
+if(!source.includes(oldPrepare))throw new Error('Daily prepare availability anchor not found.');
+source=source.replace(oldPrepare,newPrepare);
+fs.writeFileSync(file,source);
+console.log('Daily monthly availability query fixed.');
