@@ -53,6 +53,8 @@
 
           let remaining = total;
           hourlyInputs.forEach(input => {
+            input.readOnly = true;
+            input.setAttribute('aria-readonly', 'true');
             const next = rate > 0 ? Math.min(rate, Math.max(0, remaining)) : 0;
             if (Number(input.value) !== next) setNativeValue(input, next);
             remaining -= next;
