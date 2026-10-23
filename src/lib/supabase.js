@@ -23,10 +23,13 @@ const client = createClient(url, key, {
   },
 });
 
-// Daily Plan V2: the availability RPC was committed to the repository but may
-// not yet exist in the live database schema cache. Calculate the same value
-// directly from the monthly serial pool when that RPC is requested.
+// Daily Plan V2: calculate monthly-pool availability from the columns that
+// actually exist in the current production schema. Daily allocations are
+// represented in plan_serials by serial_number; older code incorrectly
+// referenced plan_serials.monthly_plan_serial_id, which does not exist.
 const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {
+  if (!monthlyPlanId) return 0;
+
   const { data: pool, error: poolError } = await client
     .from('monthly_plan_serials')
     .select('id,serial_number')
@@ -36,26 +39,29 @@ const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {
   const serials = pool || [];
   if (!serials.length) return 0;
 
-  const ids = serials.map(row => row.id);
-  const usedIds = new Set();
+  // A serial is considered allocated when that serial number already exists
+  // in plan_serials. Do not reference monthly_plan_serial_id because the live
+  // plan_serials table does not contain that column.
   const usedSerials = new Set();
-
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
     const { data: allocated, error: allocationError } = await client
       .from('plan_serials')
-      .select('monthly_plan_serial_id,serial_number')
-      .in('monthly_plan_serial_id', chunk);
+      .select('serial_number')
+      .not('serial_number', 'is', null)
+      .range(from, from + pageSize - 1);
     if (allocationError) throw allocationError;
-    for (const row of allocated || []) {
-      if (row.monthly_plan_serial_id) usedIds.add(row.monthly_plan_serial_id);
-      if (row.serial_number) usedSerials.add(String(row.serial_number).trim().toUpperCase());
+    const rows = allocated || [];
+    for (const row of rows) {
+      const serial = String(row.serial_number || '').trim().toUpperCase();
+      if (serial) usedSerials.add(serial);
     }
+    if (rows.length < pageSize) break;
   }
 
   return serials.reduce((count, row) => {
     const serial = String(row.serial_number || '').trim().toUpperCase();
-    return count + (usedIds.has(row.id) || (serial && usedSerials.has(serial)) ? 0 : 1);
+    return count + (serial && usedSerials.has(serial) ? 0 : 1);
   }, 0);
 };
 
