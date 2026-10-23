@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/apply-carry-forward.mjs && node scripts/refine-manage-production.mjs && node scripts/refine-production-planning-v2.mjs && node scripts/refine-production-planning-v3.mjs && node scripts/refine-production-planning-v4.mjs && node scripts/refine-production-planning-v5.mjs && node scripts/refine-production-planning-v6.mjs && node scripts/inject-report-center.mjs && node scripts/add-monthly-production-plan.mjs && node scripts/add-monthly-production-style.mjs && node scripts/fix-monthly-pdf-label-parser.mjs && node scripts/add-daily-monthly-planning.mjs && node scripts/add-daily-production-style.mjs && node scripts/fix-daily-availability-query.mjs && node scripts/fix-daily-hourly-override.mjs",
-    "build": "vite",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
