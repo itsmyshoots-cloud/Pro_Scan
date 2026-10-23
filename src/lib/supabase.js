@@ -65,7 +65,8 @@ const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {
 // The live database does not currently expose the create_daily_production_plan_from_monthly
 // RPC signature expected by the Daily Plan UI. Keep the UI working by performing the same
 // operation through the tables using the authenticated Supabase client. This path deliberately
-// uses only columns present in the live schema and never references plan_serials.monthly_plan_serial_id.
+// uses only columns confirmed by the live production-plan flow and never references
+// plan_serials.monthly_plan_serial_id or production_plans.break_minutes.
 const createDailyProductionPlanFromMonthly = async (args = {}) => {
   const monthlyPlanId = args.p_monthly_plan_id;
   const productionDate = args.p_production_date;
@@ -76,8 +77,6 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
   const plannedQty = Math.floor(Number(args.p_planned_qty) || 0);
   const hourlyTargets = Array.isArray(args.p_hourly_targets) ? args.p_hourly_targets : [];
   const plannedManpower = Math.max(0, Math.floor(Number(args.p_planned_manpower_count) || 0));
-  const actualManpower = Math.max(0, Math.floor(Number(args.p_actual_manpower_count) || 0));
-  const breakMinutes = Math.max(0, Math.floor(Number(args.p_break_minutes) || 0));
   const notes = String(args.p_notes || '').trim() || null;
 
   if (!monthlyPlanId) return { data: null, error: new Error('Monthly production plan is required.') };
@@ -140,6 +139,9 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
   });
   if (overlaps) return { data: null, error: new Error('This production line already has an overlapping production plan for the selected time.') };
 
+  // Keep this payload limited to columns already used by the existing production
+  // plan flow. In particular, the live schema does not contain break_minutes or
+  // planned_manpower_count. Planned manpower is stored in the existing manpower_count field.
   const { data: newPlan, error: planError } = await client
     .from('production_plans')
     .insert({
@@ -155,10 +157,8 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
       shift_start: shiftStart,
       shift_end: shiftEnd,
       shift_planned_qty: plannedQty,
-      manpower_count: actualManpower,
+      manpower_count: plannedManpower,
       monthly_plan_id: monthlyPlanId,
-      planned_manpower_count: plannedManpower,
-      break_minutes: breakMinutes,
       planner_notes: notes,
       carry_forward_from_plan_id: null,
       carry_forward_qty: 0,
