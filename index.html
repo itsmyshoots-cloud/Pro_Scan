@@ -9,6 +9,27 @@
     <style>
       /* Hide the Manage Production top navigation tab. */
       header .top-actions > button.nav-button:nth-of-type(2) { display: none; }
+
+      /* Daily Plan has exactly five visible shift controls after removing the
+         unused Break, Daily Planned Quantity and Actual Manpower inputs. */
+      .daily-production-page .daily-shift-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      }
+      @media (max-width: 1100px) {
+        .daily-production-page .daily-shift-grid {
+          grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+          overflow-x: auto;
+        }
+        .daily-production-page .daily-shift-grid > label {
+          min-width: 150px;
+        }
+      }
+      @media (max-width: 800px) {
+        .daily-production-page .daily-shift-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          overflow-x: visible;
+        }
+      }
     </style>
   </head>
   <body>
@@ -33,6 +54,7 @@
           for (const label of labels) {
             if (['Break minutes', 'Daily planned quantity', 'Actual manpower'].includes(getLabelText(label))) {
               label.style.display = 'none';
+              label.setAttribute('aria-hidden', 'true');
             }
           }
 
