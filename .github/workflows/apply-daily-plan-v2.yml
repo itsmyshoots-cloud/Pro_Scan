@@ -1,0 +1,25 @@
+name: Apply Daily Plan V2 fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-daily-plan-v2:
+    if: ${{ !contains(github.event.head_commit.message, '[daily-plan-v2]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Daily Plan V2 patch
+        run: node scripts/fix-daily-plan-v2.mjs
+      - name: Commit Daily Plan V2 patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix Daily Plan monthly pool and hourly rate UI [daily-plan-v2]"
+          git push
