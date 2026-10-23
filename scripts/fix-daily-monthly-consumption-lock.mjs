@@ -4,10 +4,6 @@ const file = 'src/lib/supabase.js';
 let source = fs.readFileSync(file, 'utf8');
 const original = source;
 
-// The serial pool is the physical source of truth, but production_plans is also
-// used as a safety ledger. If a Daily Plan already consumed quantity from this
-// monthly plan, never expose that quantity again even when an old row/status or
-// RLS visibility makes plan_serials look stale.
 const helperAnchor = "const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {";
 if (!source.includes(helperAnchor)) throw new Error('Monthly availability helper anchor not found.');
 
@@ -41,11 +37,19 @@ const helper = `const getMonthlyPlanCommittedQty = async (monthlyPlanId, sourceP
     .neq('status', 'cancelled');
   if (plan.product_name) query = query.eq('product_name', plan.product_name);
   if (plan.model) query = query.eq('model', plan.model);
-  if (plan.brand) query = query.eq('brand', plan.brand);
 
   const { data: dailyRows, error: dailyError } = await query;
   if (dailyError) throw dailyError;
-  const committed = (dailyRows || []).reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row.planned_qty) || 0)), 0);
+
+  const matchingRows = (dailyRows || []).filter(row => {
+    // Older Daily Plans may have been created before the brand column was
+    // confirmed in production_plans. Treat a null/blank brand as compatible
+    // instead of silently losing its committed quantity.
+    if (!plan.brand) return true;
+    const rowBrand = String(row.brand || '').trim().toLowerCase();
+    return !rowBrand || rowBrand === String(plan.brand).trim().toLowerCase();
+  });
+  const committed = matchingRows.reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row.planned_qty) || 0)), 0);
   return Math.min(Math.max(0, Math.floor(Number(plan.total_qty) || 0)), committed);
 };
 
@@ -53,8 +57,6 @@ const helper = `const getMonthlyPlanCommittedQty = async (monthlyPlanId, sourceP
 source = source.replace(helperAnchor, helper + helperAnchor, 1);
 
 const availabilityMarker = "  const serials = pool || [];\n  if (!serials.length) return 0;";
-const availabilityReplacement = "  const serials = pool || [];\n  if (!serials.length) return 0;\n\n  const committedQty = await getMonthlyPlanCommittedQty(monthlyPlanId, planStatus ? { ...planStatus, id: monthlyPlanId } : null);";
-// Do not use the status-only object above; replace it with a real source plan query below.
 if (!source.includes(availabilityMarker)) throw new Error('Availability serial marker not found.');
 source = source.replace(availabilityMarker, "  const serials = pool || [];\n  if (!serials.length) return 0;\n\n  const { data: sourcePlanForUsage, error: sourcePlanForUsageError } = await client\n    .from('monthly_production_plans')\n    .select('id,plan_month,brand,product_name,model,total_qty,status')\n    .eq('id', monthlyPlanId)\n    .maybeSingle();\n  if (sourcePlanForUsageError) throw sourcePlanForUsageError;\n  const committedQty = await getMonthlyPlanCommittedQty(monthlyPlanId, sourcePlanForUsage);", 1);
 
@@ -75,4 +77,4 @@ source = source.replace(availableCheck, availableCheckReplacement, 1);
 
 if (source === original) throw new Error('Daily monthly consumption lock made no changes.');
 fs.writeFileSync(file, source);
-console.log('Daily Plan now uses both serial allocation and existing daily committed quantity as hard monthly limits.');
+console.log('Daily Plan now uses serial allocation plus existing Daily Plan committed quantity as a hard monthly limit.');
