@@ -58,6 +58,15 @@
             }
           }
 
+          // Remove the explanatory capacity sentence that is no longer needed.
+          for (const element of page.querySelectorAll('*')) {
+            const text = (element.textContent || '').trim();
+            if (text.startsWith('Example: 100 units/hour × 9 productive hours = maximum 900 units')) {
+              element.style.display = 'none';
+              element.setAttribute('aria-hidden', 'true');
+            }
+          }
+
           const summaryLabels = [...page.querySelectorAll('.daily-capacity-summary span')];
           const dailyPlannedLabel = summaryLabels.find(el => el.textContent.trim() === 'Daily planned');
           if (dailyPlannedLabel) dailyPlannedLabel.textContent = 'Monthly planned';
