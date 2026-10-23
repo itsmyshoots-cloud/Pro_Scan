@@ -35,17 +35,12 @@
   <body>
     <div id="root"></div>
     <script>
-      // Daily Plan UI refinement. React owns the underlying state; this only
-      // removes the three inputs requested and keeps hourly slots synchronized
-      // with Target / hour while respecting the monthly pool quantity.
+      // Daily Plan UI refinement. React owns the underlying state. This script
+      // only hides the fields that were intentionally removed from the Daily
+      // Plan and removes the old capacity example; it never changes, locks or
+      // recalculates the hourly quantity inputs.
       (() => {
         const getLabelText = label => (label?.firstChild?.textContent || '').trim();
-        const setNativeValue = (input, value) => {
-          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-          if (setter) setter.call(input, String(value));
-          else input.value = String(value);
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-        };
         const patchDailyPlan = () => {
           const page = document.querySelector('.daily-production-page');
           if (!page) return;
@@ -58,7 +53,6 @@
             }
           }
 
-          // Remove the explanatory capacity sentence that is no longer needed.
           for (const element of page.querySelectorAll('*')) {
             const text = (element.textContent || '').trim();
             if (text.startsWith('Example: 100 units/hour × 9 productive hours = maximum 900 units')) {
@@ -70,39 +64,13 @@
           const summaryLabels = [...page.querySelectorAll('.daily-capacity-summary span')];
           const dailyPlannedLabel = summaryLabels.find(el => el.textContent.trim() === 'Daily planned');
           if (dailyPlannedLabel) dailyPlannedLabel.textContent = 'Monthly planned';
-
-          const rateLabel = labels.find(label => getLabelText(label) === 'Target / hour');
-          const plannedLabel = labels.find(label => getLabelText(label) === 'Daily planned quantity');
-          const rateInput = rateLabel?.querySelector('input');
-          const plannedInput = plannedLabel?.querySelector('input');
-          const hourlyInputs = [...page.querySelectorAll('.hourly-target-grid input')];
-          if (!rateInput || !plannedInput || !hourlyInputs.length) return;
-
-          const rate = Math.max(0, Math.floor(Number(rateInput.value) || 0));
-          const total = Math.max(0, Math.floor(Number(plannedInput.value) || 0));
-          if (!Number.isFinite(rate) || !Number.isFinite(total)) return;
-
-          let remaining = total;
-          hourlyInputs.forEach(input => {
-            input.readOnly = true;
-            input.setAttribute('aria-readonly', 'true');
-            const next = rate > 0 ? Math.min(rate, Math.max(0, remaining)) : 0;
-            if (Number(input.value) !== next) setNativeValue(input, next);
-            remaining -= next;
-          });
         };
 
         const root = document.getElementById('root');
         if (!root) return;
-        const observer = new MutationObserver(() => patchDailyPlan());
+        const observer = new MutationObserver(patchDailyPlan);
         observer.observe(root, { childList: true, subtree: true });
-        document.addEventListener('input', event => {
-          if (event.target?.closest?.('.daily-production-page')) setTimeout(patchDailyPlan, 0);
-        }, true);
-        document.addEventListener('change', event => {
-          if (event.target?.closest?.('.daily-production-page')) setTimeout(patchDailyPlan, 0);
-        }, true);
-        setInterval(patchDailyPlan, 1000);
+        patchDailyPlan();
       })();
     </script>
     <script type="module" src="/src/main.jsx"></script>
