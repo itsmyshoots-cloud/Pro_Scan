@@ -64,9 +64,49 @@ const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {
 
 // The live database does not currently expose the create_daily_production_plan_from_monthly
 // RPC signature expected by the Daily Plan UI. Keep the UI working by performing the same
-// operation through the tables using the authenticated Supabase client. This path deliberately
-// uses only columns confirmed by the live production-plan flow and never references
-// plan_serials.monthly_plan_serial_id, production_plans.break_minutes, or production_plans.monthly_plan_id.
+// operation through the tables using the authenticated Supabase client.
+//
+// IMPORTANT: this insert is schema-compatible. Supabase/PostgREST returns a
+// deterministic "Could not find the 'X' column of 'production_plans'" error when
+// an older database is missing an optional column. We remove only that optional
+// field and retry the same insert. This prevents the recurring one-column-at-a-time
+// deployment failures that were happening during Daily Plan creation.
+const insertProductionPlanSchemaCompatible = async (payload) => {
+  const workingPayload = { ...payload };
+  const removableFields = new Set([
+    'brand',
+    'hourly_targets',
+    'shift_name',
+    'shift_start',
+    'shift_end',
+    'shift_planned_qty',
+    'manpower_count',
+    'planner_notes',
+  ]);
+
+  for (let attempt = 0; attempt <= removableFields.size; attempt += 1) {
+    const { data, error } = await client
+      .from('production_plans')
+      .insert(workingPayload)
+      .select()
+      .single();
+
+    if (!error) return { data, error: null };
+
+    const message = String(error.message || '');
+    const match = message.match(/Could not find the '([^']+)' column of 'production_plans'/i);
+    const missingColumn = match?.[1];
+
+    if (!missingColumn || !removableFields.has(missingColumn) || !(missingColumn in workingPayload)) {
+      return { data: null, error };
+    }
+
+    delete workingPayload[missingColumn];
+  }
+
+  return { data: null, error: new Error('Could not create the daily production plan with the current production_plans schema.') };
+};
+
 const createDailyProductionPlanFromMonthly = async (args = {}) => {
   const monthlyPlanId = args.p_monthly_plan_id;
   const productionDate = args.p_production_date;
@@ -77,7 +117,6 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
   const plannedQty = Math.floor(Number(args.p_planned_qty) || 0);
   const hourlyTargets = Array.isArray(args.p_hourly_targets) ? args.p_hourly_targets : [];
   const plannedManpower = Math.max(0, Math.floor(Number(args.p_planned_manpower_count) || 0));
-  const notes = String(args.p_notes || '').trim() || null;
 
   if (!monthlyPlanId) return { data: null, error: new Error('Monthly production plan is required.') };
   if (!productionDate || !productionLine) return { data: null, error: new Error('Production date and production line are required.') };
@@ -139,29 +178,25 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
   });
   if (overlaps) return { data: null, error: new Error('This production line already has an overlapping production plan for the selected time.') };
 
-  // Keep the insert payload limited to columns confirmed to exist in the live
-  // production-plan schema. The monthly relationship is represented by the
-  // allocated serials, so no monthly_plan_id column is required on production_plans.
-  const { data: newPlan, error: planError } = await client
-    .from('production_plans')
-    .insert({
-      production_date: productionDate,
-      product_name: sourcePlan.product_name,
-      model: sourcePlan.model,
-      production_line: productionLine,
-      planned_qty: plannedQty,
-      status: 'draft',
-      brand: sourcePlan.brand,
-      hourly_targets: hourlyTargets,
-      shift_name: shiftName,
-      shift_start: shiftStart,
-      shift_end: shiftEnd,
-      shift_planned_qty: plannedQty,
-      manpower_count: plannedManpower,
-      planner_notes: notes,
-    })
-    .select()
-    .single();
+  // Only fields known to belong to the Daily Plan record are supplied here.
+  // The compatibility helper removes any optional field that is absent from
+  // an older production_plans schema, so another missing-column error will not
+  // require another code/deployment cycle.
+  const { data: newPlan, error: planError } = await insertProductionPlanSchemaCompatible({
+    production_date: productionDate,
+    product_name: sourcePlan.product_name,
+    model: sourcePlan.model,
+    production_line: productionLine,
+    planned_qty: plannedQty,
+    status: 'draft',
+    brand: sourcePlan.brand,
+    hourly_targets: hourlyTargets,
+    shift_name: shiftName,
+    shift_start: shiftStart,
+    shift_end: shiftEnd,
+    shift_planned_qty: plannedQty,
+    manpower_count: plannedManpower,
+  });
   if (planError) return { data: null, error: planError };
 
   const chosen = available.slice(0, plannedQty);
