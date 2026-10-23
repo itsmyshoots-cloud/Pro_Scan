@@ -23,6 +23,9 @@ const client = createClient(url, key, {
   },
 });
 
+// Normalize serials in one place so comparisons and allocations use the same key.
+const normalizeSerial = (value) => String(value || '').trim().toUpperCase();
+
 // Daily Plan V2: calculate monthly-pool availability from the columns that
 // actually exist in the current production schema. Daily allocations are
 // represented in plan_serials by serial_number; older code incorrectly
@@ -50,16 +53,26 @@ const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {
     if (allocationError) throw allocationError;
     const rows = allocated || [];
     for (const row of rows) {
-      const serial = String(row.serial_number || '').trim().toUpperCase();
+      const serial = normalizeSerial(row.serial_number);
       if (serial) usedSerials.add(serial);
     }
     if (rows.length < pageSize) break;
   }
 
-  return serials.reduce((count, row) => {
-    const serial = String(row.serial_number || '').trim().toUpperCase();
-    return count + (serial && usedSerials.has(serial) ? 0 : 1);
-  }, 0);
+  // A monthly pool should represent unique physical serials. If the imported
+  // pool contains the same serial more than once, count it only once so the
+  // availability number can never promise more unique serials than we can insert.
+  const uniquePoolSerials = new Set();
+  for (const row of serials) {
+    const serial = normalizeSerial(row.serial_number);
+    if (serial) uniquePoolSerials.add(serial);
+  }
+
+  let available = 0;
+  for (const serial of uniquePoolSerials) {
+    if (!usedSerials.has(serial)) available += 1;
+  }
+  return available;
 };
 
 // The live database does not currently expose the create_daily_production_plan_from_monthly
@@ -151,14 +164,25 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
     .not('serial_number', 'is', null);
   if (allocatedError) return { data: null, error: allocatedError };
 
-  const used = new Set((allocated || []).map(row => String(row.serial_number || '').trim().toUpperCase()).filter(Boolean));
-  const available = (pool || []).filter(row => {
-    const serial = String(row.serial_number || '').trim().toUpperCase();
-    return serial && !used.has(serial);
-  });
+  const used = new Set((allocated || []).map(row => normalizeSerial(row.serial_number)).filter(Boolean));
+
+  // Build a unique, ordered list of available serials. This is the critical
+  // protection for ux_plan_serials_serial_number: duplicate rows in the monthly
+  // pool must never produce duplicate plan_serials inserts.
+  const available = [];
+  const seenPoolSerials = new Set();
+  for (const row of pool || []) {
+    const serial = normalizeSerial(row.serial_number);
+    if (!serial || used.has(serial) || seenPoolSerials.has(serial)) continue;
+    seenPoolSerials.add(serial);
+    available.push(row);
+  }
 
   if (plannedQty > available.length) {
-    return { data: null, error: new Error(`Daily planned quantity ${plannedQty} exceeds available monthly serials ${available.length}.`) };
+    return {
+      data: null,
+      error: new Error(`Daily planned quantity ${plannedQty} exceeds available unique monthly serials ${available.length}.`),
+    };
   }
 
   const { data: overlapPlans, error: overlapError } = await client
@@ -178,10 +202,6 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
   });
   if (overlaps) return { data: null, error: new Error('This production line already has an overlapping production plan for the selected time.') };
 
-  // Only fields known to belong to the Daily Plan record are supplied here.
-  // The compatibility helper removes any optional field that is absent from
-  // an older production_plans schema, so another missing-column error will not
-  // require another code/deployment cycle.
   const { data: newPlan, error: planError } = await insertProductionPlanSchemaCompatible({
     production_date: productionDate,
     product_name: sourcePlan.product_name,
@@ -208,9 +228,21 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
     status: 'pending',
   }));
 
+  // Defensive final check immediately before insert. This also protects against
+  // accidental duplicate serials introduced by future changes to the candidate
+  // selection logic.
+  const insertSerialKeys = payload.map(row => normalizeSerial(row.serial_number));
+  if (new Set(insertSerialKeys).size !== insertSerialKeys.length) {
+    await client.from('production_plans').delete().eq('id', newPlan.id);
+    return { data: null, error: new Error('Daily Plan contains duplicate serial numbers and was not created.') };
+  }
+
   const { error: serialError } = await client.from('plan_serials').insert(payload);
   if (serialError) {
     await client.from('production_plans').delete().eq('id', newPlan.id);
+    if (String(serialError.message || '').toLowerCase().includes('ux_plan_serials_serial_number')) {
+      return { data: null, error: new Error('One or more monthly serial numbers are already allocated. Please refresh the Daily Plan and try again.') };
+    }
     return { data: null, error: serialError };
   }
 
