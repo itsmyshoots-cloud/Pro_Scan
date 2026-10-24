@@ -37,7 +37,6 @@ const pureHelpers=`
 function __planCapacity(plan){return Number(plan?.shift_planned_qty??plan?.planned_qty??0);}
 function __planRequirement(plan){return Number(plan?.planned_qty||0);}
 function __planCarryForward(plan){const explicit=Number(plan?.carry_forward_qty||0);return explicit>0?explicit:Math.max(0,__planRequirement(plan)-__planCapacity(plan));}
-function __planCarryPreviewFallback(plan){const quantity=Math.max(0,Number(plan?.carry_forward_qty||0));return {quantity,rate:0,hours:0,capacity:0,start:0,end:0,chain:[]};}
 // PROSCAN_CANONICAL_PLAN_HELPERS_END
 `;
 
@@ -47,7 +46,7 @@ source=source.replace(appAnchor,pureHelpers+'\n'+appAnchor+`
 `);
 
 for(const name of ['__planCapacity','__planRequirement','__planCarryForward','__planCarryPreviewFallback']){
- if(!source.includes(`function ${name}(`))throw new Error(`Module-scoped canonical helper ${name} was not installed.`);
+ if(name==='__planCarryPreviewFallback') { if(!source.includes('function __planCarryPreviewFallback('))throw new Error('Module-scoped carry-preview helper was not installed.'); } else if(!source.includes(`function ${name}(`))throw new Error(`Module-scoped canonical helper ${name} was not installed.`);
 }
 if(!source.includes('const __refreshProductionPlans=async()=>'))throw new Error('Canonical App-local plan loader was not installed.');
 if(/\b(?:load|refreshPlans)\s*\(\s*\)/.test(source))throw new Error('Legacy load/refreshPlans call remains.');
