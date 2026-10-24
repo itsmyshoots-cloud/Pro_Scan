@@ -26,6 +26,21 @@ const client = createClient(url, key, {
 // Normalize serials in one place so comparisons and allocations use the same key.
 const normalizeSerial = (value) => String(value || '').trim().toUpperCase();
 
+// Supabase/PostgREST commonly limits a single response to 1000 rows. Always
+// paginate application serial tables so a monthly plan larger than 1000 units
+// is never silently truncated (for example, 1786 rows becoming only 1000).
+const fetchAllRows = async (buildQuery, pageSize = 500) => {
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = data || [];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+};
+
 // Daily Plan V2: calculate monthly-pool availability from the columns that
 // actually exist in the current production schema. Daily allocations are
 // represented in plan_serials by serial_number; older code incorrectly
@@ -33,30 +48,23 @@ const normalizeSerial = (value) => String(value || '').trim().toUpperCase();
 const getMonthlyPlanAvailableQty = async (monthlyPlanId) => {
   if (!monthlyPlanId) return 0;
 
-  const { data: pool, error: poolError } = await client
+  const serials = await fetchAllRows((from, to) => client
     .from('monthly_plan_serials')
     .select('id,serial_number')
-    .eq('monthly_plan_id', monthlyPlanId);
-  if (poolError) throw poolError;
-
-  const serials = pool || [];
+    .eq('monthly_plan_id', monthlyPlanId)
+    .range(from, to));
   if (!serials.length) return 0;
 
+  const allocated = await fetchAllRows((from, to) => client
+    .from('plan_serials')
+    .select('serial_number')
+    .not('serial_number', 'is', null)
+    .range(from, to));
+
   const usedSerials = new Set();
-  const pageSize = 500;
-  for (let from = 0; ; from += pageSize) {
-    const { data: allocated, error: allocationError } = await client
-      .from('plan_serials')
-      .select('serial_number')
-      .not('serial_number', 'is', null)
-      .range(from, from + pageSize - 1);
-    if (allocationError) throw allocationError;
-    const rows = allocated || [];
-    for (const row of rows) {
-      const serial = normalizeSerial(row.serial_number);
-      if (serial) usedSerials.add(serial);
-    }
-    if (rows.length < pageSize) break;
+  for (const row of allocated) {
+    const serial = normalizeSerial(row.serial_number);
+    if (serial) usedSerials.add(serial);
   }
 
   // A monthly pool should represent unique physical serials. If the imported
@@ -151,18 +159,18 @@ const createDailyProductionPlanFromMonthly = async (args = {}) => {
   if (sourceError) return { data: null, error: sourceError };
   if (!sourcePlan) return { data: null, error: new Error('Monthly production plan was not found or is not active.') };
 
-  const { data: pool, error: poolError } = await client
+  const pool = await fetchAllRows((from, to) => client
     .from('monthly_plan_serials')
     .select('id,label_number,serial_number,sequence_no')
     .eq('monthly_plan_id', monthlyPlanId)
-    .order('sequence_no', { ascending: true });
-  if (poolError) return { data: null, error: poolError };
+    .order('sequence_no', { ascending: true })
+    .range(from, to));
 
-  const { data: allocated, error: allocatedError } = await client
+  const allocated = await fetchAllRows((from, to) => client
     .from('plan_serials')
     .select('serial_number')
-    .not('serial_number', 'is', null);
-  if (allocatedError) return { data: null, error: allocatedError };
+    .not('serial_number', 'is', null)
+    .range(from, to));
 
   const used = new Set((allocated || []).map(row => normalizeSerial(row.serial_number)).filter(Boolean));
 
