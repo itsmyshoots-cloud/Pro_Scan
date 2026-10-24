@@ -1,0 +1,10 @@
+import fs from 'fs';
+const file='src/AuthGate.jsx';
+let source=fs.readFileSync(file,'utf8');
+const original=source;
+source=source.replace("import React, { lazy, Suspense, useEffect, useState } from 'react';\nconst App = lazy(() => import('./App.jsx'));", "import React, { useEffect, useState } from 'react';\nimport App from './App.jsx';");
+const suspense="<Suspense fallback={<main className='auth-page auth-startup'><div className='auth-startup-card'><span className='auth-startup-logo'>PS</span><div><strong>Pro Scan</strong><small>Loading workspace</small></div><span className='auth-startup-spinner'/><p>Opening production workspace</p></div></main>}><App user={user} /></Suspense>";
+source=source.replace(suspense,"<App user={user} />");
+if(source===original) throw new Error('AuthGate white-screen patch made no changes.');
+fs.writeFileSync(file,source);
+console.log('AuthGate workspace loading fixed: static App import restored.');
