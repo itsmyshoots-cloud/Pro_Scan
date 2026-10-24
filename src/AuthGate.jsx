@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import App from './App.jsx';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+const App = lazy(() => import('./App.jsx'));
 import { supabase } from './lib/supabase';
 import './auth.css';
 
@@ -15,6 +15,11 @@ function LoginScreen({ onAuthenticated }) {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
+
+  useEffect(()=>{
+    // Warm the auth edge function while the login screen is visible so the first sign-in is less likely to hit a cold start.
+    void supabase.functions.invoke('app-auth',{body:{action:'session'}});
+  },[]);
 
   const switchMode=next=>{
     setMode(next);setPassword('');setConfirmPassword('');setShowPassword(false);setError('');setNotice('');
@@ -42,22 +47,10 @@ function LoginScreen({ onAuthenticated }) {
     <div className='auth-layout'>
       <aside className='auth-brand-panel'>
         <div className='auth-panel-brand'><span className='auth-logo auth-logo-premium'><span>PS</span><i/></span><div><span className='auth-panel-overline'>PRODUCTION CONTROL</span><strong>Pro Scan</strong></div></div>
-        <div className='auth-brand-copy'>
-          <span className='auth-brand-kicker'><i/> FACTORY OPERATIONS PLATFORM</span>
-          <h2>Every scan.<br/><span>Accounted for.</span></h2>
-          <p>One clear view of production plans, serial traceability and live output across your factory floor.</p>
-        </div>
-        <div className='auth-visual-card' aria-hidden='true'>
-          <div className='auth-visual-header'><span className='auth-visual-overline'>SCAN WORKFLOW</span><span className='auth-visual-live'><i/> READY</span></div>
-          <div className='auth-visual-center'>
-            <div className='auth-scan-frame'><i className='scan-corner scan-corner-tl'/><i className='scan-corner scan-corner-tr'/><i className='scan-corner scan-corner-bl'/><i className='scan-corner scan-corner-br'/><div className='auth-qr-pattern'><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/></div><span className='auth-scan-beam'/></div>
-            <div className='auth-visual-lines'><span/><span/><span/><span/><span/></div>
-          </div>
-          <div className='auth-visual-footer'><span><i/> PLAN-WISE TRACKING</span><span>LIVE VISIBILITY</span></div>
-        </div>
+        <div className='auth-brand-copy'><span className='auth-brand-kicker'><i/> FACTORY OPERATIONS PLATFORM</span><h2>Every scan.<br/><span>Accounted for.</span></h2><p>One clear view of production plans, serial traceability and live output across your factory floor.</p></div>
+        <div className='auth-visual-card' aria-hidden='true'><div className='auth-visual-header'><span className='auth-visual-overline'>SCAN WORKFLOW</span><span className='auth-visual-live'><i/> READY</span></div><div className='auth-visual-center'><div className='auth-scan-frame'><i className='scan-corner scan-corner-tl'/><i className='scan-corner scan-corner-tr'/><i className='scan-corner scan-corner-bl'/><i className='scan-corner scan-corner-br'/><div className='auth-qr-pattern'><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/></div><span className='auth-scan-beam'/></div><div className='auth-visual-lines'><span/><span/><span/><span/><span/></div></div><div className='auth-visual-footer'><span><i/> PLAN-WISE TRACKING</span><span>LIVE VISIBILITY</span></div></div>
         <div className='auth-panel-footer'><span>GSONS INDUSTRIES</span><i/> PRODUCTION SYSTEMS</div>
       </aside>
-
       <section className='auth-form-panel'>
         <div className='auth-form-topline'><span className='auth-form-overline'>{mode==='register'?'ACCOUNT REGISTRATION':'SECURE WORKSPACE'}</span><span className='auth-secure-mark'><i/> Secure access</span></div>
         <div className='auth-heading auth-heading-premium'><span className='auth-step-label'>{mode==='register'?'GET STARTED':'WELCOME BACK'}</span><h1>{mode==='register'?'Create your account':'Sign in to Pro Scan'}</h1><p>{mode==='register'?'Use your company email to request access. The Super Admin will assign your role.':'Enter your company credentials to access your production workspace.'}</p></div>
@@ -77,16 +70,7 @@ function LoginScreen({ onAuthenticated }) {
 }
 
 function PendingAccessScreen({email,onSignOut,onRefresh,checking,error,notice}) {
-  return <main className='auth-page'><section className='auth-card pending-access-card'>
-    <div className='auth-brand'><span className='auth-logo'>PS</span><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div></div>
-    <div className='pending-access-mark'>⌛</div>
-    <div className='auth-heading'><h2>Waiting for role assignment</h2><p>Your account has been created, but production access is not assigned yet.</p></div>
-    <div className='pending-access-email'>{email}</div>
-    <p className='auth-help'>Ask your Super Admin to assign you as Planner or Operator. Once assigned, select Check access or sign in again. No production tabs are available until a role is assigned.</p>
-    {error&&<div className='auth-error' role='alert'>{error}</div>}
-    {notice&&<div className='auth-notice' role='status'>{notice}</div>}
-    <div className='pending-access-actions'><button className='auth-submit' onClick={onRefresh} disabled={checking}>{checking?'Checking access…':'Check access'}</button><button className='auth-mode-toggle' onClick={onSignOut}>Sign out</button></div>
-  </section></main>;
+  return <main className='auth-page'><section className='auth-card pending-access-card'><div className='auth-brand'><span className='auth-logo'>PS</span><div><span className='eyebrow'>PRODUCTION CONTROL</span><h1>Pro Scan</h1></div></div><div className='pending-access-mark'>⌛</div><div className='auth-heading'><h2>Waiting for role assignment</h2><p>Your account has been created, but production access is not assigned yet.</p></div><div className='pending-access-email'>{email}</div><p className='auth-help'>Ask your Super Admin to assign you as Planner or Operator. Once assigned, select Check access or sign in again. No production tabs are available until a role is assigned.</p>{error&&<div className='auth-error' role='alert'>{error}</div>}{notice&&<div className='auth-notice' role='status'>{notice}</div>}<div className='pending-access-actions'><button className='auth-submit' onClick={onRefresh} disabled={checking}>{checking?'Checking access…':'Check access'}</button><button className='auth-mode-toggle' onClick={onSignOut}>Sign out</button></div></section></main>;
 }
 
 export default function AuthGate() {
@@ -94,103 +78,34 @@ export default function AuthGate() {
     if (typeof localStorage === 'undefined') return undefined;
     const token = localStorage.getItem(SESSION_KEY);
     if (!token) return null;
-    try {
-      const cached = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null');
-      if (cached?.email && ['pending','super_admin','planner','operator'].includes(cached?.role)) return cached;
-    } catch {}
+    try { const cached = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null'); if (cached?.email && ['pending','super_admin','planner','operator'].includes(cached?.role)) return cached; } catch {}
     return undefined;
   });
-  const acceptUser = nextUser => {
-    if(nextUser && nextUser.email && nextUser.role){
-      localStorage.setItem(USER_CACHE_KEY,JSON.stringify({email:nextUser.email,role:nextUser.role}));
-    }else{
-      localStorage.removeItem(USER_CACHE_KEY);
-    }
-    setUser(nextUser||null);
-  };
+  const acceptUser = nextUser => { if(nextUser && nextUser.email && nextUser.role) localStorage.setItem(USER_CACHE_KEY,JSON.stringify({email:nextUser.email,role:nextUser.role})); else localStorage.removeItem(USER_CACHE_KEY); setUser(nextUser||null); };
 
   useEffect(() => {
     let mounted = true;
     const token = localStorage.getItem(SESSION_KEY);
-    if (!token) {
-      localStorage.removeItem(USER_CACHE_KEY);
-      setUser(null);
-      return () => { mounted = false; };
-    }
-
+    if (!token) { localStorage.removeItem(USER_CACHE_KEY); setUser(null); return () => { mounted = false; }; }
     let cachedUser = null;
-    try {
-      const parsed = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null');
-      if (parsed?.email && ['pending','super_admin','planner','operator'].includes(parsed?.role)) cachedUser = parsed;
-    } catch {}
-    // Resume the shell immediately; the token is still validated by the server below.
+    try { const parsed = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null'); if (parsed?.email && ['pending','super_admin','planner','operator'].includes(parsed?.role)) cachedUser = parsed; } catch {}
     if (cachedUser) setUser(cachedUser);
-
-    supabase.functions.invoke('app-auth', { body: { action: 'session' } })
-      .then(({ data, error }) => {
-        if (!mounted) return;
-        if (!error && data?.user?.email && data?.user?.role) {
-          const verified = { email: data.user.email, role: data.user.role };
-          localStorage.setItem(USER_CACHE_KEY, JSON.stringify(verified));
-          // Avoid re-rendering the entire workspace when background validation confirms the same identity.
-          if (!cachedUser || cachedUser.email !== verified.email || cachedUser.role !== verified.role) setUser(verified);
-          return;
-        }
-        // A successful session response with no user means the token has expired/revoked.
-        if (!error && data && !data.user) {
-          localStorage.removeItem(SESSION_KEY);
-          localStorage.removeItem(USER_CACHE_KEY);
-          setUser(null);
-          return;
-        }
-        // Preserve a cached shell during transient network/service errors; never treat it as a valid server session.
-        if (!cachedUser) {
-          localStorage.removeItem(SESSION_KEY);
-          localStorage.removeItem(USER_CACHE_KEY);
-          setUser(null);
-        }
-      })
-      .catch(() => {
-        if (!mounted) return;
-        if (!cachedUser) {
-          localStorage.removeItem(SESSION_KEY);
-          localStorage.removeItem(USER_CACHE_KEY);
-          setUser(null);
-        }
-      });
+    supabase.functions.invoke('app-auth', { body: { action: 'session' } }).then(({ data, error }) => {
+      if (!mounted) return;
+      if (!error && data?.user?.email && data?.user?.role) { const verified={email:data.user.email,role:data.user.role}; localStorage.setItem(USER_CACHE_KEY,JSON.stringify(verified)); if (!cachedUser || cachedUser.email!==verified.email || cachedUser.role!==verified.role) setUser(verified); return; }
+      if (!error && data && !data.user) { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(USER_CACHE_KEY); setUser(null); return; }
+      if (!cachedUser) { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(USER_CACHE_KEY); setUser(null); }
+    }).catch(()=>{ if (!mounted) return; if (!cachedUser) { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(USER_CACHE_KEY); setUser(null); } });
     return () => { mounted = false; };
   }, []);
 
-  const signOut = async () => {
-    try {
-      await supabase.functions.invoke('app-auth', { body: { action: 'logout' } });
-    } finally {
-      localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem(USER_CACHE_KEY);
-      setUser(null);
-    }
-  };
-
-  const [checkingAccess,setCheckingAccess]=useState(false);
-  const [accessCheckError,setAccessCheckError]=useState('');
-  const [accessCheckNotice,setAccessCheckNotice]=useState('');
-  const refreshAccess=async()=>{
-    setCheckingAccess(true);setAccessCheckError('');setAccessCheckNotice('');
-    try{
-      const {data,error}=await supabase.functions.invoke('app-auth',{body:{action:'session'}});
-      if(error||!data?.user){setAccessCheckError(error?.message||'Could not verify your account. Please sign in again.');return;}
-      acceptUser(data.user);
-      if(data.user.role==='pending')setAccessCheckNotice('Your role is still pending. Check again after the Super Admin updates it.');
-    }catch(error){setAccessCheckError(error?.message||'Could not check access.');}
-    finally{setCheckingAccess(false);}
-  };
+  const signOut = async () => { try { await supabase.functions.invoke('app-auth', { body: { action: 'logout' } }); } finally { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(USER_CACHE_KEY); setUser(null); } };
+  const [checkingAccess,setCheckingAccess]=useState(false); const [accessCheckError,setAccessCheckError]=useState(''); const [accessCheckNotice,setAccessCheckNotice]=useState('');
+  const refreshAccess=async()=>{ setCheckingAccess(true);setAccessCheckError('');setAccessCheckNotice(''); try{const {data,error}=await supabase.functions.invoke('app-auth',{body:{action:'session'}});if(error||!data?.user){setAccessCheckError(error?.message||'Could not verify your account. Please sign in again.');return;}acceptUser(data.user);if(data.user.role==='pending')setAccessCheckNotice('Your role is still pending. Check again after the Super Admin updates it.');}catch(error){setAccessCheckError(error?.message||'Could not check access.');}finally{setCheckingAccess(false);}};
 
   if (user === undefined) return <main className='auth-page auth-startup'><div className='auth-startup-card'><span className='auth-startup-logo'>PS</span><div><strong>Pro Scan</strong><small>Production Control</small></div><span className='auth-startup-spinner'/><p>Preparing your workspace</p></div></main>;
   if (!user) return <LoginScreen onAuthenticated={acceptUser} />;
   if (user.role === 'pending') return <PendingAccessScreen email={user.email} onSignOut={signOut} onRefresh={refreshAccess} checking={checkingAccess} error={accessCheckError} notice={accessCheckNotice} />;
 
-  return <div className={'auth-shell auth-role-' + user.role}>
-    <div className='auth-userbar'><span><b>{user.email}</b><em>{{super_admin:'Super Admin',planner:'Planner',operator:'Operator'}[user.role]||user.role}</em></span><button onClick={signOut}>Sign out</button></div>
-    <App user={user} />
-  </div>;
+  return <div className={'auth-shell auth-role-' + user.role}><div className='auth-userbar'><span><b>{user.email}</b><em>{{super_admin:'Super Admin',planner:'Planner',operator:'Operator'}[user.role]||user.role}</em></span><button onClick={signOut}>Sign out</button></div><Suspense fallback={<main className='auth-page auth-startup'><div className='auth-startup-card'><span className='auth-startup-logo'>PS</span><div><strong>Pro Scan</strong><small>Loading workspace</small></div><span className='auth-startup-spinner'/><p>Opening production workspace</p></div></main>}><App user={user} /></Suspense></div>;
 }
