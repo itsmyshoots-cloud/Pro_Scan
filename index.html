@@ -57,10 +57,6 @@
               element.setAttribute('aria-hidden', 'true');
             }
           }
-
-          const summaryLabels = [...page.querySelectorAll('.daily-capacity-summary span')];
-          const dailyPlannedLabel = summaryLabels.find(el => el.textContent.trim() === 'Daily planned');
-          if (dailyPlannedLabel) dailyPlannedLabel.textContent = 'Monthly planned';
         };
 
         const root = document.getElementById('root');
