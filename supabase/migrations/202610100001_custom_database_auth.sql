@@ -251,7 +251,7 @@ begin
  update public.production_plans set production_date=p_production_date,brand=coalesce(nullif(btrim(p_brand),''),'Unspecified'),product_name=btrim(p_product_name),model=btrim(p_model),production_line=btrim(p_production_line),planned_qty=p_planned_qty,hourly_targets=p_hourly_targets where id=p_plan_id and status='draft' returning * into updated_plan;
  if not found then raise exception 'Plan is no longer Draft'; end if;
  delete from public.plan_serials where plan_id=p_plan_id;
- insert into public.plan_serials(plan_id,label_number,serial_number,sequence_no,status) select p_plan_id,btrim(p.label_number),btrim(p.serial_number),p.ordinality::integer,'pending' from jsonb_to_recordset(p_serial_pairs) with ordinality as p(label_number text,serial_number text,ordinality bigint) order by p.ordinality;
+ insert into public.plan_serials(plan_id,label_number,serial_number,sequence_no,status) select p_plan_id,btrim(pair.value->>'label_number'),btrim(pair.value->>'serial_number'),pair.ordinality::integer,'pending' from jsonb_array_elements(p_serial_pairs) with ordinality as pair(value,ordinality) order by pair.ordinality;
  return updated_plan;
 end; $$;
 revoke all on function public.update_draft_production_plan(uuid,date,text,text,text,text,integer,jsonb,jsonb) from public;
