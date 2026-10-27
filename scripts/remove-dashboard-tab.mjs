@@ -47,7 +47,7 @@ source=source.replaceAll("view==='dashboard'||view==='live-monitoring'", "view==
 if(source.includes("view==='dashboard'"))throw new Error('Dashboard route condition remains after removal.');
 if(source.includes("setView('dashboard')"))throw new Error('Navigation still routes to Dashboard.');
 if(source.includes("'>Dashboard</button>"))throw new Error('Dashboard button label remains.');
-if(!source.includes("'>Live View</button>"))throw new Error('Live View navigation is missing.');
+if(!source.includes(">Live View</button>"))throw new Error('Live View navigation is missing.');
 if(!source.includes("const initialView=user?.role==='operator'?'operator':'live-monitoring';"))throw new Error('Live View is not the default landing screen.');
 fs.writeFileSync(file,source);
 console.log('Dashboard tab and screen removed. Live View is now the default non-operator workspace.');
