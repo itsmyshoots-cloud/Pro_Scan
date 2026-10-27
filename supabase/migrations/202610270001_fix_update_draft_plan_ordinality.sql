@@ -195,26 +195,18 @@ begin
 
   delete from public.plan_serials where plan_id = p_plan_id;
 
-  -- Rebuild the allocation in the same order as the form and restore monthly-pool
-  -- references by matching each allocated serial to its Monthly Plan pool row.
+  -- Rebuild the allocation in form order using columns present in the deployed
+  -- plan_serials schema. Monthly availability remains guarded by serial_number.
   insert into public.plan_serials(
-    plan_id, monthly_plan_serial_id, label_number, serial_number, sequence_no, status
+    plan_id, label_number, serial_number, sequence_no, status
   )
   select
     p_plan_id,
-    monthly_match.id,
     btrim(pair.value->>'label_number'),
     btrim(pair.value->>'serial_number'),
     pair.ordinality::integer,
     'pending'
   from jsonb_array_elements(p_serial_pairs) with ordinality as pair(value, ordinality)
-  left join lateral (
-    select mps.id
-    from public.monthly_plan_serials mps
-    where upper(btrim(mps.serial_number)) = upper(btrim(pair.value->>'serial_number'))
-    order by mps.sequence_no
-    limit 1
-  ) as monthly_match on true
   order by pair.ordinality;
 
   return updated_plan;
