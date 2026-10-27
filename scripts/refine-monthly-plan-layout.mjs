@@ -26,7 +26,7 @@ if(!source.includes('const monthlyBrandOptions=')){
   "const monthlyInventoryPlanned=monthlyInventorySummary.reduce((sum,row)=>sum+row.planned,0);",
   "const monthlyInventoryActual=monthlyInventorySummary.reduce((sum,row)=>sum+row.actual,0);"
  ].join('\n');
- source=replaceOnce(source,"const navAnchor=",helpers+"\nconst navAnchor=","Monthly option and summary helpers");
+source=replaceOnce(source," const importFile=async e=>{",helpers+"\n const importFile=async e=>{","Monthly option and summary helpers");
 }
 
 // Use dropdown suggestions from actual stored data, with new entries still allowed.
