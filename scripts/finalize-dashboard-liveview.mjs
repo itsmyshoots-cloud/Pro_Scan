@@ -174,7 +174,7 @@ if(!css.includes('dashboard-live-v1'))css+='\n'+cssRules+'\n';
 fs.writeFileSync(cssFile,css);
 
 // Build-time safeguards: all critical new views must be present and hooks must be unconditional.
-if(!source.includes("'>Live View</button>"))throw new Error('Live View navigation was not installed.');
+if(!source.includes(">Live View</button>"))throw new Error('Live View navigation was not installed.');
 if(!source.includes('todayPlannedQuantity')||!source.includes('todayProducedQuantity')||!source.includes('todayCompletedPlans'))throw new Error("Today dashboard metrics are missing.");
 if(!source.includes("LIVE SCAN ACTIVITY")||!source.includes("MONTHLY PRODUCTION PROGRESS")||!source.includes("PRODUCTION LINE STATUS"))throw new Error('Live monitoring sections are missing.');
 if(!source.includes("setRecentScanEvents(previous=>[eventRecord"))throw new Error('Immediate scan event refresh is missing.');
