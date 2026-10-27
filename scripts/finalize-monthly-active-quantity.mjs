@@ -6,6 +6,18 @@ const original=source;
 
 const appAnchor=" const importFile=async e=>{";
 if(!source.includes(appAnchor))throw new Error('Monthly Plan helper anchor not found.');
+if(!source.includes('const [monthlyOpenDropdown,setMonthlyOpenDropdown]')){
+ const dropdownHelpers=[
+  "const [monthlyOpenDropdown,setMonthlyOpenDropdown]=useState('');",
+  "const [monthlyDropdownSearch,setMonthlyDropdownSearch]=useState('');",
+  "const [monthlyNewCatalogType,setMonthlyNewCatalogType]=useState('');",
+  "const [monthlyNewCatalogValue,setMonthlyNewCatalogValue]=useState('');",
+  "const [monthlyCustomCatalogOptions,setMonthlyCustomCatalogOptions]=useState({brand:[],product_name:[],model:[]});",
+  "const renderMonthlyCatalogDropdown=(field,label,options,value,placeholder,onSelect)=>{const visibleOptions=[...new Set([...(options||[]),...(monthlyCustomCatalogOptions[field]||[])].map(item=>String(item||'').trim()).filter(Boolean))].filter(item=>!monthlyDropdownSearch.trim()||item.toLocaleLowerCase().includes(monthlyDropdownSearch.trim().toLocaleLowerCase()));return <div className={'monthly-catalog-dropdown '+(monthlyOpenDropdown===field?'is-open':'')}><label>{label}</label><button type='button' className='monthly-catalog-trigger' aria-expanded={monthlyOpenDropdown===field} onClick={()=>{setMonthlyOpenDropdown(monthlyOpenDropdown===field?'':field);setMonthlyDropdownSearch('');setMonthlyNewCatalogType('');setMonthlyNewCatalogValue('')}}><span>{value||placeholder}</span><span className='monthly-catalog-chevron'>⌄</span></button>{monthlyOpenDropdown===field&&<div className='monthly-catalog-menu'><input className='monthly-catalog-search' value={monthlyDropdownSearch} onChange={e=>setMonthlyDropdownSearch(e.target.value)} placeholder={'Search '+label.toLowerCase()+'…'}/><div className='monthly-catalog-option-list'>{visibleOptions.length?visibleOptions.map(item=><button type='button' key={item} className={'monthly-catalog-option '+(item===value?'is-selected':'')} onClick={()=>{onSelect(item);setMonthlyOpenDropdown('');setMonthlyDropdownSearch('');setMonthlyNewCatalogType('')}}><span>{item}</span>{item===value&&<span>✓</span>}</button>):<div className='monthly-catalog-empty'>No matching {label.toLowerCase()} options</div>}</div><div className='monthly-catalog-add-area'>{monthlyNewCatalogType!==field?<button type='button' className='monthly-catalog-add-link' onClick={()=>{setMonthlyNewCatalogType(field);setMonthlyNewCatalogValue(monthlyDropdownSearch.trim())}}><span>＋</span> Add new {label}</button>:<div className='monthly-catalog-new-form'><input autoFocus value={monthlyNewCatalogValue} onChange={e=>setMonthlyNewCatalogValue(e.target.value)} placeholder={'New '+label.toLowerCase()+' name'}/><div><button type='button' className='monthly-catalog-cancel' onClick={()=>{setMonthlyNewCatalogType('');setMonthlyNewCatalogValue('')}}>Cancel</button><button type='button' className='monthly-catalog-save' disabled={!monthlyNewCatalogValue.trim()} onClick={()=>{const next=monthlyNewCatalogValue.trim();setMonthlyCustomCatalogOptions(prev=>({...prev,[field]:[...new Set([...(prev[field]||[]),next])]}));onSelect(next);setMonthlyOpenDropdown('');setMonthlyDropdownSearch('');setMonthlyNewCatalogType('');setMonthlyNewCatalogValue('')}}>Add</button></div></div>}</div></div>};"
+ ].join('\n');
+ source=source.replace(appAnchor,dropdownHelpers+'\n'+appAnchor);
+}
+
 if(!source.includes('const monthlyDashboardMonth=')){
  const helpers=[
   "const [monthlyDashboardMonth,setMonthlyDashboardMonth]=useState(new Date().toISOString().slice(0,7)); const [monthlySearch,setMonthlySearch]=useState('');",
@@ -43,6 +55,16 @@ form=form.replace(
  "<small>{monthlyFile||(monthlyEditingId?'Choose a file containing additional unique serial-label pairs':'Searchable PDF / CSV / TXT')}</small>",
  "<small>{monthlyFile||(monthlyEditingId?'Upload a file with additional quantity entries':'Upload PDF, CSV or TXT with product quantities')}</small>"
 );
+const brandInput="<label>Brand<input list='monthly-brand-options' value={monthlyForm.brand} onChange={e=>setMonthlyForm({...monthlyForm,brand:e.target.value,product_name:'',model:''})} placeholder='Choose or enter brand'/><datalist id='monthly-brand-options'>{monthlyBrandOptions.map(value=><option key={value} value={value}/>)}</datalist></label>";
+const productInput="<label>Product<input list='monthly-product-options' value={monthlyForm.product_name} onChange={e=>setMonthlyForm({...monthlyForm,product_name:e.target.value,model:''})} placeholder='Choose or enter product'/><datalist id='monthly-product-options'>{monthlyProductOptions.map(value=><option key={value} value={value}/>)}</datalist></label>";
+const modelInput="<label>Model<input list='monthly-model-options' value={monthlyForm.model} onChange={e=>setMonthlyForm({...monthlyForm,model:e.target.value})} placeholder='Choose or enter model'/><datalist id='monthly-model-options'>{monthlyModelOptions.map(value=><option key={value} value={value}/>)}</datalist></label>";
+if(!form.includes("renderMonthlyCatalogDropdown('brand'")){
+ if(!form.includes(brandInput)||!form.includes(productInput)||!form.includes(modelInput))throw new Error('Could not find all native dropdown fields to replace.');
+ form=form.replace(brandInput,"{renderMonthlyCatalogDropdown('brand','Brand',monthlyBrandOptions,monthlyForm.brand,'Choose brand',value=>setMonthlyForm({...monthlyForm,brand:value,product_name:'',model:''}))}");
+ form=form.replace(productInput,"{renderMonthlyCatalogDropdown('product_name','Product',monthlyProductOptions,monthlyForm.product_name,'Choose product',value=>setMonthlyForm({...monthlyForm,product_name:value,model:''}))}");
+ form=form.replace(modelInput,"{renderMonthlyCatalogDropdown('model','Model',monthlyModelOptions,monthlyForm.model,'Choose model',value=>setMonthlyForm({...monthlyForm,model:value}))}");
+}
+
 form=form.replace("Ready serials","Ready Quantity");
 form=form.replace(/serial-label pairs/g,"quantity entries");
 form=form.replace(/serials/g,"quantities");
@@ -64,6 +86,33 @@ if(!fs.existsSync(cssFile))throw new Error('Monthly stylesheet was not generated
 let css=fs.readFileSync(cssFile,'utf8');
 if(!css.includes('monthly-dashboard-layout-v3')){
  const rules=[
+  "/* monthly-custom-dropdowns-v1 */",
+  ".monthly-create-panel{position:relative;z-index:4;overflow:visible!important}",
+  ".monthly-create-panel .monthly-form-grid{position:relative;z-index:5;overflow:visible}",
+  ".monthly-catalog-dropdown{position:relative;display:grid;gap:7px;min-width:0}",
+  ".monthly-catalog-dropdown>label{display:block;color:#3c4d6a;font-size:12px;font-weight:800}",
+  ".monthly-catalog-trigger{width:100%;min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #d9e3f1;border-radius:9px;background:#fff;color:#263b5e;font:inherit;font-size:13px;text-align:left;cursor:pointer;box-sizing:border-box}",
+  ".monthly-catalog-trigger>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  ".monthly-catalog-chevron{flex:0 0 auto;font-size:17px;color:#627797;transition:transform .15s ease}",
+  ".monthly-catalog-dropdown.is-open .monthly-catalog-trigger{border-color:#4c95ff;box-shadow:0 0 0 3px rgba(37,112,245,.13)}",
+  ".monthly-catalog-dropdown.is-open .monthly-catalog-chevron{transform:rotate(180deg)}",
+  ".monthly-catalog-menu{position:absolute;z-index:1000;left:0;right:0;top:calc(100% + 7px);padding:8px;background:#fff;border:1px solid #dce6f3;border-radius:13px;box-shadow:0 16px 38px rgba(22,43,76,.18);min-width:230px;max-height:340px;display:flex;flex-direction:column;gap:7px}",
+  ".monthly-catalog-search{width:100%;box-sizing:border-box;border:1px solid #dce6f3;border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;color:#17254a;outline:none}",
+  ".monthly-catalog-search:focus,.monthly-catalog-new-form input:focus{border-color:#5b9bfa;box-shadow:0 0 0 2px rgba(37,112,245,.12)}",
+  ".monthly-catalog-option-list{overflow-y:auto;min-height:0;max-height:190px;display:flex;flex-direction:column;gap:2px}",
+  ".monthly-catalog-option{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;border-radius:7px;background:#fff;color:#314565;text-align:left;padding:9px 10px;font:inherit;font-size:12px;cursor:pointer}",
+  ".monthly-catalog-option:hover,.monthly-catalog-option.is-selected{background:#edf5ff;color:#115fe0}",
+  ".monthly-catalog-empty{padding:12px 10px;color:#7a8ba5;font-size:12px}",
+  ".monthly-catalog-add-area{border-top:1px solid #e8eef6;padding-top:7px}",
+  ".monthly-catalog-add-link{width:100%;display:flex;align-items:center;gap:8px;border:0;border-radius:8px;background:#eff6ff;color:#1267ed;font:inherit;font-size:12px;font-weight:900;padding:10px;cursor:pointer;text-align:left}",
+  ".monthly-catalog-add-link>span{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#dbeafe;font-size:16px}",
+  ".monthly-catalog-new-form{display:grid;gap:8px}",
+  ".monthly-catalog-new-form input{width:100%;box-sizing:border-box;border:1px solid #dce6f3;border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;color:#17254a}",
+  ".monthly-catalog-new-form>div{display:flex;justify-content:flex-end;gap:7px}",
+  ".monthly-catalog-new-form button{border:1px solid #dce6f3;border-radius:7px;padding:7px 10px;background:#fff;color:#415574;font:inherit;font-size:11px;font-weight:800;cursor:pointer}",
+  ".monthly-catalog-new-form .monthly-catalog-save{border-color:#1267f5;background:#1267f5;color:#fff}",
+  ".monthly-catalog-new-form .monthly-catalog-save:disabled{opacity:.4;cursor:not-allowed}",
+  "@media(max-width:900px){.monthly-catalog-menu{min-width:0;max-width:calc(100vw - 56px)}}",
   "/* monthly-dashboard-layout-v3 */",
   ".monthly-production-page{display:flex;flex-direction:column;gap:18px;max-width:1700px;margin:0 auto;padding:24px;background:#f2f6fc;color:#17254a}",
   ".monthly-page-header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:0 0 2px}",
@@ -122,6 +171,8 @@ if(!css.includes('monthly-dashboard-layout-v3')){
 }
 
 if(!newPage.includes('ACTIVE QUANTITY')||!newPage.includes('Production Quantity')||!newPage.includes('Difference')||!newPage.includes('monthly-plan-table')||!newPage.includes('monthly-total-kpis'))throw new Error('Monthly Plan dashboard UI validation failed.');
+if(!newPage.includes("renderMonthlyCatalogDropdown('brand'")||!newPage.includes("renderMonthlyCatalogDropdown('product_name'")||!newPage.includes("renderMonthlyCatalogDropdown('model'"))throw new Error('Monthly catalog custom dropdowns were not installed.');
+if(newPage.includes('<datalist')||newPage.includes('list=\'monthly-brand-options\''))throw new Error('Native browser datalist is still present on the Monthly Plan form.');
 if(newPage.includes('MONTHLY SERIAL POOLS')||newPage.includes('Add Serials')||newPage.includes('unique serials'))throw new Error('Legacy serial terminology remains on the Monthly Plan screen.');
 source=source.replace(monthlyPagePattern,newPage);
 if(source===original)console.log('Monthly Plan dashboard already up to date.');
