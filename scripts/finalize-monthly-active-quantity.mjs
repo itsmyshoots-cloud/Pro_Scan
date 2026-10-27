@@ -20,11 +20,11 @@ if(!source.includes('const monthlyDashboardMonth=')){
  source=source.replace(appAnchor,helpers+'\n'+appAnchor);
 }
 
-const monthlyPagePattern=/\{view==='monthly-plans'&&<main className='monthly-production-page'>[\\s\\S]*?<\\/main>\\}/;
+const monthlyPagePattern=/\{view==='monthly-plans'&&<main className='monthly-production-page'>[\s\S]*?<\/main>\}/;
 const pageMatch=source.match(monthlyPagePattern);
 if(!pageMatch)throw new Error('Could not find the current Monthly Plan page to replace.');
 const oldPage=pageMatch[0];
-const formMatch=oldPage.match(/<section className='panel monthly-create-panel'>[\\s\\S]*?<\\/section>/);
+const formMatch=oldPage.match(/<section className='panel monthly-create-panel'>[\s\S]*?<\/section>/);
 if(!formMatch)throw new Error('Could not preserve the Monthly Plan create/edit form.');
 let form=formMatch[0];
 form=form.replace(
