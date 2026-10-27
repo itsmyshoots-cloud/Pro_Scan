@@ -56,8 +56,8 @@ if(!source.includes("const todayProductionPlans=")){
 }
 
 // Include monthly serial allocation status scans in the normal live refresh loop after navigating to Dashboard/Live View.
-const oldLoadEffect="useEffect(()=>{void load()},[]);";
-const newLoadEffect="useEffect(()=>{void load()},[]);\n useEffect(()=>{if(['dashboard','live-monitoring'].includes(view)){void loadMonthlyPlans();}},[view]);";
+const oldLoadEffect="useEffect(()=>{void __refreshProductionPlans()},[]);";
+const newLoadEffect="useEffect(()=>{void __refreshProductionPlans()},[]);\n useEffect(()=>{if(['dashboard','live-monitoring'].includes(view)){void loadMonthlyPlans();}},[view]);";
 if(!source.includes("if(['dashboard','live-monitoring'].includes(view)){void loadMonthlyPlans();}"))
  source=replaceExactly(source,oldLoadEffect,newLoadEffect,"monthly progress loader");
 
