@@ -2,6 +2,12 @@
 -- PostgreSQL cannot combine jsonb_to_recordset() WITH ORDINALITY with a typed column-definition list.
 -- Use jsonb_array_elements() WITH ORDINALITY and extract the JSON object fields instead.
 
+-- Remove only this RPC function version first. The existing function has parameter defaults;
+-- CREATE OR REPLACE cannot remove those defaults. The function contains no production rows.
+drop function if exists public.update_draft_production_plan(
+  uuid, date, text, text, text, text, integer, jsonb, jsonb, text, time without time zone, time without time zone, integer
+);
+
 create or replace function public.update_draft_production_plan(
   p_plan_id uuid,
   p_production_date date,
