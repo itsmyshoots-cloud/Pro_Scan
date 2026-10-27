@@ -62,8 +62,8 @@ if(!source.includes("if(['dashboard','live-monitoring'].includes(view)){void loa
  source=replaceExactly(source,oldLoadEffect,newLoadEffect,"monthly progress loader");
 
 // Add a first-class Live View tab, while keeping the existing route and screen.
-const dashboardNav="onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='manage'?'nav-button is-active':'nav-button'}";
-const liveNav="onClick={()=>setView('dashboard')}>Dashboard</button><button className={view==='live-monitoring'?'nav-button is-active':'nav-button'} onClick={()=>setView('live-monitoring')}>Live View</button><button className={view==='manage'?'nav-button is-active':'nav-button'}";
+const dashboardNav="className={view==='dashboard'?'nav-button is-active':'nav-button'} onClick={()=>setView('dashboard')}>Dashboard</button>";
+const liveNav=dashboardNav+"<button className={view==='live-monitoring'?'nav-button is-active':'nav-button'} onClick={()=>setView('live-monitoring')}>Live View</button>";
 if(!source.includes("'>Live View</button>"))source=replaceExactly(source,dashboardNav,liveNav,"Live View navigation");
 
 // Replace existing Dashboard KPIs with today's production truth, including completed shifts.
