@@ -34,7 +34,7 @@ const dailyQuantityPanel = "<section className='panel daily-quantity-panel'><div
 
 const dailyListAnchor="<section className='panel daily-plans-list-panel'>";
 if(!source.includes(dailyListAnchor))throw new Error('Daily Plan list anchor missing.');
-if(!source.includes("className='daily-quantity-panel'"))source=source.replace(dailyListAnchor,dailyQuantityPanel+"\n "+dailyListAnchor);
+if(!source.includes("className='panel daily-quantity-panel'"))source=source.replace(dailyListAnchor,dailyQuantityPanel+"\n "+dailyListAnchor);
 const dailyListStart=source.indexOf(dailyListAnchor);
 const dailyListEnd=source.indexOf("</section>",dailyListStart);
 if(dailyListStart<0||dailyListEnd<0)throw new Error('Daily Plan detail list boundaries missing.');
@@ -73,7 +73,7 @@ source=source.slice(0,livePanelIndex)+liveQuantityPanel+"\n "+source.slice(liveP
 
 if(!source.includes("dailyPlansForSelectedDate.map(plan=>"))throw new Error('Daily plan detail list is not filtered by the selected date.');
 const liveViewEnd=source.indexOf("{view==='planner'&&<main>",liveStart); const liveQuantityPanelCount=source.slice(liveStart,liveViewEnd).split("className='panel live-quantity-panel'").length-1; console.log('Live View quantity panel count after deduplication: '+liveQuantityPanelCount); if(liveQuantityPanelCount<1)throw new Error('Live View product quantity panel was not inserted.');
-if(!source.includes("className='daily-quantity-panel'"))throw new Error('Daily Plan quantity panel missing.');
+if(!source.includes("className='panel daily-quantity-panel'"))throw new Error('Daily Plan quantity panel missing.');
 if(!source.includes("onChange={e=>{setForm({...form,production_date:e.target.value});setDailyDashboardDate(e.target.value);}}"))throw new Error('Daily creation date is not synchronized with its summary.');
 
 const cssFile='src/dashboard-live.css';
