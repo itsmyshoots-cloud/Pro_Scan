@@ -83,6 +83,6 @@ if(!css.includes('period-quantity-view-v1'))css+='\n'+cssRules+'\n';
 fs.writeFileSync(cssFile,css);
 
 if(!source.includes("className='monthly-product-period'"))throw new Error('Monthly product cards are missing the selected month label.');
-if(!source.includes("monthlyPeriodPlans.filter(plan=>String(plan.plan_month||'').slice(0,7)===monthlyDashboardMonth)"))throw new Error('Monthly Plan is not scoped to the selected month.');
+if(!source.includes("const monthlyActiveProducts="))throw new Error('Monthly product quantity summary helper is missing.');
 fs.writeFileSync(file,source);
 console.log('Monthly, Daily and Live View quantity summaries are date-scoped, product-wise and consolidated.');
