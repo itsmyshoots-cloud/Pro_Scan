@@ -72,7 +72,7 @@ if(livePanelIndex<0)throw new Error('Original line-wise/hourly Live View panel m
 source=source.slice(0,livePanelIndex)+liveQuantityPanel+"\n "+source.slice(livePanelIndex);
 
 if(!source.includes("dailyPlansForSelectedDate.map(plan=>"))throw new Error('Daily plan detail list is not filtered by the selected date.');
-const liveViewEnd=source.indexOf("{view==='planner'&&<main>",liveStart); const liveQuantityPanelCount=source.slice(liveStart,liveViewEnd).split("className='live-quantity-panel'").length-1; console.log('Live View quantity panel count after deduplication: '+liveQuantityPanelCount); if(liveQuantityPanelCount<1)throw new Error('Live View product quantity panel was not inserted.');
+const liveViewEnd=source.indexOf("{view==='planner'&&<main>",liveStart); const liveQuantityPanelCount=source.slice(liveStart,liveViewEnd).split("className='panel live-quantity-panel'").length-1; console.log('Live View quantity panel count after deduplication: '+liveQuantityPanelCount); if(liveQuantityPanelCount<1)throw new Error('Live View product quantity panel was not inserted.');
 if(!source.includes("className='daily-quantity-panel'"))throw new Error('Daily Plan quantity panel missing.');
 if(!source.includes("onChange={e=>{setForm({...form,production_date:e.target.value});setDailyDashboardDate(e.target.value);}}"))throw new Error('Daily creation date is not synchronized with its summary.');
 
