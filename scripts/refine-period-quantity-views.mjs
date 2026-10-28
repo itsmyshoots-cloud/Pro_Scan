@@ -73,7 +73,7 @@ if(!source.slice(liveStart,source.indexOf("{view==='planner'&&<main>",liveStart)
 }
 
 if(!source.includes("dailyPlansForSelectedDate.map(plan=>"))throw new Error('Daily plan detail list is not filtered by the selected date.');
-if((source.match(/className='live-quantity-panel'/g)||[]).length!==1)throw new Error('Expected exactly one Live View product quantity panel.');
+const liveViewEnd=source.indexOf("{view==='planner'&&<main>",liveStart); if(source.slice(liveStart,liveViewEnd).split("className='live-quantity-panel'").length!==2)throw new Error('Expected exactly one product quantity panel inside Live View.');
 if(!source.includes("className='daily-quantity-panel'"))throw new Error('Daily Plan quantity panel missing.');
 if(!source.includes("onChange={e=>{setForm({...form,production_date:e.target.value});setDailyDashboardDate(e.target.value);}}"))throw new Error('Daily creation date is not synchronized with its summary.');
 
