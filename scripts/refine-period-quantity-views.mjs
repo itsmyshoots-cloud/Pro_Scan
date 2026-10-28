@@ -68,16 +68,14 @@ const liveQuantityPanel="<section className='panel live-quantity-panel'><div cla
 const livePanelAnchor="<section className='panel live-line-panel'>";
 const livePanelIndex=source.indexOf(livePanelAnchor,liveStart);
 if(livePanelIndex<0)throw new Error('Original line-wise/hourly Live View panel missing.');
-if(!source.slice(liveStart,source.indexOf("{view==='planner'&&<main>",liveStart)).includes("className='live-quantity-panel'")){
 const plannerBoundary=source.indexOf("{view==='planner'&&<main>",liveStart);
 if(plannerBoundary<0)throw new Error('Live View end boundary missing.');
 let liveViewMarkup=source.slice(liveStart,plannerBoundary);
-liveViewMarkup=liveViewMarkup.replace(/<section className='panel live-quantity-panel'>[\\s\\S]*?<\\/section>/g,'');
+liveViewMarkup=liveViewMarkup.replace(/<section className='panel live-quantity-panel'>[\s\S]*?<\/section>/g,'');
 const quantityInsertAt=liveViewMarkup.indexOf(livePanelAnchor);
 if(quantityInsertAt<0)throw new Error('Original line-wise/hourly Live View panel missing after cleanup.');
-liveViewMarkup=liveViewMarkup.slice(0,quantityInsertAt)+liveQuantityPanel+"\\n "+liveViewMarkup.slice(quantityInsertAt);
+liveViewMarkup=liveViewMarkup.slice(0,quantityInsertAt)+liveQuantityPanel+"\n "+liveViewMarkup.slice(quantityInsertAt);
 source=source.slice(0,liveStart)+liveViewMarkup+source.slice(plannerBoundary);
-}
 
 if(!source.includes("dailyPlansForSelectedDate.map(plan=>"))throw new Error('Daily plan detail list is not filtered by the selected date.');
 const liveViewEnd=source.indexOf("{view==='planner'&&<main>",liveStart); if(source.slice(liveStart,liveViewEnd).split("className='live-quantity-panel'").length!==2)throw new Error('Expected exactly one product quantity panel inside Live View.');
