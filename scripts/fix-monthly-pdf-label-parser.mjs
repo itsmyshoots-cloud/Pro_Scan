@@ -8,8 +8,9 @@ if(start<0||end<0) throw new Error('Monthly PDF parser boundaries not found.');
 
 const replacement=`async function parseSupplierPdf(file,onProgress){
  // Supplier PDFs can contain QR images plus visible text labels. PDF.js may
- // expose repeated/hidden text-layer tokens at different coordinates. Pair
- // visible label/serial values by proximity and never reuse the same value.
+ // expose repeated/hidden text-layer tokens at different coordinates and even
+ // repeat the same value on multiple pages. Pair visible label/serial values by
+ // proximity and keep a GLOBAL value set across the entire PDF.
  const [pdfjsModule,workerModule]=await Promise.all([
   import('pdfjs-dist/legacy/build/pdf.mjs'),
   import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
@@ -21,11 +22,16 @@ const replacement=`async function parseSupplierPdf(file,onProgress){
  const pairXDistance=12;
  const minSerialYOffset=-12;
  const maxSerialYOffset=12;
+ const globalSerialValues=new Set();
+ const globalLabelValues=new Set();
  const uniqueVisible=(tokens)=>{
   const result=[];
+  const seen=new Set();
   for(const token of tokens){
-   const duplicate=result.some(existing=>existing.token===token.token&&Math.abs(existing.x-token.x)<=POSITION_TOLERANCE&&Math.abs(existing.y-token.y)<=POSITION_TOLERANCE);
-   if(!duplicate)result.push(token);
+   const coordinateKey=token.token+'|'+Math.round(token.x/POSITION_TOLERANCE)+'|'+Math.round(token.y/POSITION_TOLERANCE);
+   if(seen.has(coordinateKey))continue;
+   seen.add(coordinateKey);
+   result.push(token);
   }
   return result;
  };
@@ -51,13 +57,13 @@ const replacement=`async function parseSupplierPdf(file,onProgress){
    const items=content.items||[];
    const labels=collect(items,/\\b(?:P|U)-\\d+\\b/gi,pageNo);
    const serials=collect(items,/\\bGM\\d+\\b/gi,pageNo);
-   const usedSerialValues=new Set();
-   const usedLabelValues=new Set();
+   const pageSerialValues=new Set();
+   const pageLabelValues=new Set();
    const pageRows=[];
    for(const label of labels){
-    if(usedLabelValues.has(label.token))continue;
+    if(globalLabelValues.has(label.token)||pageLabelValues.has(label.token))continue;
     const candidates=serials.filter(serial=>{
-     if(usedSerialValues.has(serial.token))return false;
+     if(globalSerialValues.has(serial.token)||pageSerialValues.has(serial.token))return false;
      const dx=Math.abs(serial.x-label.x),dy=serial.y-label.y;
      return dx<=pairXDistance&&dy>=minSerialYOffset&&dy<=maxSerialYOffset;
     }).sort((a,b)=>{
@@ -67,22 +73,30 @@ const replacement=`async function parseSupplierPdf(file,onProgress){
     });
     if(candidates.length){
      const serial=candidates[0];
-     usedLabelValues.add(label.token);
-     usedSerialValues.add(serial.token);
+     pageLabelValues.add(label.token);
+     pageSerialValues.add(serial.token);
+     globalLabelValues.add(label.token);
+     globalSerialValues.add(serial.token);
      pageRows.push({label_number:label.token,serial_number:serial.token});
     }
    }
-   if(!pageRows.length)throw new Error('No label/serial pairs found on PDF page '+pageNo+'.');
-   if(pageRows.length!==new Set(labels.map(x=>x.token)).size||pageRows.length!==new Set(serials.map(x=>x.token)).size)throw new Error('PDF extraction found '+new Set(labels.map(x=>x.token)).size+' unique labels and '+new Set(serials.map(x=>x.token)).size+' unique serials on page '+pageNo+'. The PDF may contain unsupported text-layer content.');
+   // Hidden/repeated PDF.js tokens are intentionally ignored. Only fail when
+   // a page has visible unique labels/serials that cannot be paired at all.
+   const uniquePageLabels=[...new Set(labels.map(x=>x.token))].filter(value=>!globalLabelValues.has(value)||pageLabelValues.has(value));
+   const uniquePageSerials=[...new Set(serials.map(x=>x.token))].filter(value=>!globalSerialValues.has(value)||pageSerialValues.has(value));
+   if(!pageRows.length&&labels.length&&serials.length)throw new Error('No label/serial pairs found on PDF page '+pageNo+'.');
+   if(!pageRows.length&&(!labels.length||!serials.length))throw new Error('PDF extraction found '+new Set(labels.map(x=>x.token)).size+' labels and '+new Set(serials.map(x=>x.token)).size+' serials on page '+pageNo+'.');
    rows.push(...pageRows);
    page.cleanup();
    if(pageNo%50===0){onProgress('Reading PDF page '+pageNo.toLocaleString()+' of '+pageCount.toLocaleString()+'…');await new Promise(resolve=>setTimeout(resolve,0));}
   }
  }finally{await pdf.destroy();}
  if(!rows.length)throw new Error('No label/serial text found. This may be an image-only PDF; use a searchable PDF or CSV/TXT export.');
+ if(new Set(rows.map(row=>row.serial_number)).size!==rows.length)throw new Error('PDF parser could not produce unique serial numbers.');
+ if(new Set(rows.map(row=>row.label_number)).size!==rows.length)throw new Error('PDF parser could not produce unique labels.');
  return {rows,pages:pageCount};
 }
 `;
 source=source.slice(0,start)+replacement+source.slice(end);
 fs.writeFileSync(file,source);
-console.log('PDF parser updated: deduplicates repeated PDF.js serial values before pairing.');
+console.log('PDF parser updated: globally deduplicates repeated PDF.js serial/label values before pairing.');
