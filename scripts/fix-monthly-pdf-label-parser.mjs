@@ -19,7 +19,7 @@ const replacement=`async function parseSupplierPdf(file,onProgress){
  const pageCount=pdf.numPages,rows=[];
  const POSITION_TOLERANCE=4;
  const pairXDistance=12;
- const minSerialYOffset=-2;
+ const minSerialYOffset=-12;
  const maxSerialYOffset=12;
  const uniqueVisible=(tokens)=>{
   const result=[];
