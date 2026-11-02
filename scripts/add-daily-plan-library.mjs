@@ -8,8 +8,8 @@ const stateAnchor=" const [roleUsers,setRoleUsers]=useState([]);";
 if(!source.includes(stateAnchor))throw new Error('App state anchor not found.');
 if(!source.includes('dailyLibraryBrand')) source=source.replace(stateAnchor," const [dailyLibraryBrand,setDailyLibraryBrand]=useState('all'); const [dailyLibraryProduct,setDailyLibraryProduct]=useState('all'); const [dailyLibraryDate,setDailyLibraryDate]=useState('all');\n"+stateAnchor);
 
-const derivedAnchor=" const load=async()=>{";
-if(!source.includes(derivedAnchor))throw new Error('Load anchor not found.');
+const derivedAnchor=" const loadMonthlyPlans=async()=>{";
+if(!source.includes(derivedAnchor))throw new Error('Monthly loader anchor not found.');
 if(!source.includes('dailyLibraryFilteredPlans')){
  const derived=` const dailyLibraryBrands=[...new Set(plans.map(plan=>String(plan.brand||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
  const dailyLibraryProducts=[...new Set(plans.filter(plan=>dailyLibraryBrand==='all'||plan.brand===dailyLibraryBrand).map(plan=>String(plan.product_name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
