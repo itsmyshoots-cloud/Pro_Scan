@@ -6,8 +6,10 @@ if(!source.includes('monthlyLockedIds')) source=source.replace(stateAnchor,state
 const loaderAnchor=" const loadMonthlyPlans=async()=>{";
 if(!source.includes(loaderAnchor)) throw new Error('Monthly loader anchor not found.');
 if(!source.includes('refreshMonthlyPlanLocks')){
- const helper=" const refreshMonthlyPlanLocks=async()=>{const {data,error}=await supabase.from('plan_serials').select('monthly_plan_id').not('monthly_plan_id','is',null);if(error){setMonthlyMessage('Could not check Monthly Plan locks: '+error.message);return;}setMonthlyLockedIds(new Set((data||[]).map(row=>String(row.monthly_plan_id)).filter(Boolean)));};\n useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans]);\n";
+ const helper=" const refreshMonthlyPlanLocks=async()=>{const {data,error}=await supabase.from('plan_serials').select('monthly_plan_id').not('monthly_plan_id','is',null);if(error){setMonthlyMessage('Could not check Monthly Plan locks: '+error.message);return;}setMonthlyLockedIds(new Set((data||[]).map(row=>String(row.monthly_plan_id)).filter(Boolean)));};\n useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans,plans,view]);\n";
  source=source.replace(loaderAnchor,helper+loaderAnchor);
+}else{
+ source=source.replace("useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans]);","useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans,plans,view]);");
 }
 const guard="const startEditMonthlyPlan=plan=>{\n  if(!plan)return;";
 if(source.includes(guard)&&!source.includes("This Monthly Plan is locked because a Daily Plan has already been created.")) source=source.replace(guard,"const startEditMonthlyPlan=plan=>{\n  if(!plan)return;\n  if(monthlyLockedIds.has(String(plan.id))){setMonthlyMessage('This Monthly Plan is locked because a Daily Plan has already been created from it. It can no longer be edited or deleted.');return;}");
@@ -19,4 +21,4 @@ const oldButton="<button type='button' data-monthly-action='edit' data-monthly-p
 const newButton="<button type='button' data-monthly-action='edit' data-monthly-plan-id={plan.id} title={monthlyLockedIds.has(String(plan.id))?'Locked: Daily Plan already created':'Edit Monthly Plan'} aria-label='Edit Monthly Plan' disabled={monthlyBusy||monthlyLockedIds.has(String(plan.id))}>✎</button><button type='button' data-monthly-action='delete' data-monthly-plan-id={plan.id} className='is-remove' title={monthlyLockedIds.has(String(plan.id))?'Locked: Daily Plan already created':'Remove Monthly Plan'} aria-label='Remove Monthly Plan' disabled={monthlyBusy||monthlyLockedIds.has(String(plan.id))}>⌫</button>";
 if(source.includes(oldButton)) source=source.replace(oldButton,newButton);
 const cssFile='src/monthly-production.css'; if(fs.existsSync(cssFile)){let css=fs.readFileSync(cssFile,'utf8');if(!css.includes('monthly-lock-v1')) css += "\n/* monthly-lock-v1 */\n.monthly-table-actions button:disabled{opacity:.42!important;cursor:not-allowed!important}.monthly-table-actions button:disabled:hover{transform:none!important}\n";fs.writeFileSync(cssFile,css);}
-fs.writeFileSync(file,source); console.log('Monthly Plan lock-after-daily rule installed.');
+fs.writeFileSync(file,source); console.log('Monthly Plan lock-after-daily rule installed and refreshes live after Daily Plan creation.');
