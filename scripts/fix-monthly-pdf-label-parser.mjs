@@ -7,20 +7,30 @@ const end=source.indexOf('function validatePairs(',start);
 if(start<0||end<0) throw new Error('Monthly PDF parser boundaries not found.');
 
 const replacement=`async function parseSupplierPdf(file,onProgress){
- // Some supplier PDFs expose the same visible label/serial through overlapping
- // text-layer items whose PDF.js coordinates differ by a few sub-points.
- // Treat same-token occurrences within a tiny coordinate tolerance as one
- // extraction, while preserving genuine duplicates printed at separate locations.
+ // Supplier PDFs can contain QR images plus visible text labels. PDF.js may
+ // expose extra/hidden text-layer tokens, so pair only physically adjacent
+ // label/serial tokens from the same page instead of globally zipping matches.
  const [pdfjsModule,workerModule]=await Promise.all([
   import('pdfjs-dist/legacy/build/pdf.mjs'),
   import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
  ]);
  pdfjsModule.GlobalWorkerOptions.workerSrc=workerModule.default;
  const pdf=await pdfjsModule.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
- const pageCount=pdf.numPages,labels=[],serials=[];
- const seenLabels=new Map(),seenSerials=new Map();
+ const pageCount=pdf.numPages,rows=[];
  const POSITION_TOLERANCE=4;
- const collectTokens=(items,regex,seen,target,pageNo)=>{
+ const pairXDistance=12;
+ const minSerialYOffset=-2;
+ const maxSerialYOffset=12;
+ const uniqueVisible=(tokens)=>{
+  const result=[];
+  for(const token of tokens){
+   const duplicate=result.some(existing=>existing.token===token.token&&Math.abs(existing.x-token.x)<=POSITION_TOLERANCE&&Math.abs(existing.y-token.y)<=POSITION_TOLERANCE);
+   if(!duplicate)result.push(token);
+  }
+  return result;
+ };
+ const collect=(items,regex,pageNo)=>{
+  const tokens=[];
   for(const item of items){
    const text=String(item.str||'');
    if(!text)continue;
@@ -29,36 +39,47 @@ const replacement=`async function parseSupplierPdf(file,onProgress){
    regex.lastIndex=0;
    let match;
    while((match=regex.exec(text))!==null){
-    const token=match[0].toUpperCase();
-    const occurrences=seen.get(token)||[];
-    const isSameVisibleToken=occurrences.some(p=>p.pageNo===pageNo&&Math.abs(p.x-x)<=POSITION_TOLERANCE&&Math.abs(p.y-y)<=POSITION_TOLERANCE);
-    if(!isSameVisibleToken){
-     occurrences.push({pageNo,x,y});
-     seen.set(token,occurrences);
-     target.push({token,pageNo,x,y});
-    }
+    tokens.push({token:match[0].toUpperCase(),pageNo,x,y});
     if(match[0].length===0)regex.lastIndex++;
    }
   }
+  return uniqueVisible(tokens);
  };
  try{
   for(let pageNo=1;pageNo<=pageCount;pageNo++){
    const page=await pdf.getPage(pageNo),content=await page.getTextContent();
    const items=content.items||[];
-   collectTokens(items,/\\b(?:P|U)-\\d+\\b/gi,seenLabels,labels,pageNo);
-   collectTokens(items,/\\bGM\\d+\\b/gi,seenSerials,serials,pageNo);
+   const labels=collect(items,/\\b(?:P|U)-\\d+\\b/gi,pageNo);
+   const serials=collect(items,/\\bGM\\d+\\b/gi,pageNo);
+   const usedSerials=new Set();
+   const pageRows=[];
+   for(const label of labels){
+    const candidates=serials.filter(serial=>{
+     if(usedSerials.has(serial))return false;
+     const dx=Math.abs(serial.x-label.x),dy=serial.y-label.y;
+     return dx<=pairXDistance&&dy>=minSerialYOffset&&dy<=maxSerialYOffset;
+    }).sort((a,b)=>{
+     const scoreA=Math.abs(a.x-label.x)+Math.abs(a.y-label.y)*2;
+     const scoreB=Math.abs(b.x-label.x)+Math.abs(b.y-label.y)*2;
+     return scoreA-scoreB;
+    });
+    if(candidates.length){
+     const serial=candidates[0];
+     usedSerials.add(serial);
+     pageRows.push({label_number:label.token,serial_number:serial.token});
+    }
+   }
+   if(!pageRows.length)throw new Error('No label/serial pairs found on PDF page '+pageNo+'.');
+   if(pageRows.length!==labels.length||pageRows.length!==serials.length)throw new Error('PDF extraction found '+labels.length+' labels and '+serials.length+' serials on page '+pageNo+'. The PDF may contain unsupported text-layer content.');
+   rows.push(...pageRows);
    page.cleanup();
    if(pageNo%50===0){onProgress('Reading PDF page '+pageNo.toLocaleString()+' of '+pageCount.toLocaleString()+'…');await new Promise(resolve=>setTimeout(resolve,0));}
   }
  }finally{await pdf.destroy();}
- // Restore the PDF.js reading order after filtering duplicate text-layer items.
- labels.sort((a,b)=>a.pageNo-b.pageNo||b.y-a.y||a.x-b.x);
- serials.sort((a,b)=>a.pageNo-b.pageNo||b.y-a.y||a.x-b.x);
- if(labels.length!==serials.length)throw new Error('PDF extraction found '+labels.length+' labels and '+serials.length+' serials. The PDF may be incomplete.');
- if(!labels.length)throw new Error('No label/serial text found. This may be an image-only PDF; use a searchable PDF or CSV/TXT export.');
- return {rows:labels.map((label,i)=>({label_number:label.token,serial_number:serials[i].token})),pages:pageCount};
+ if(!rows.length)throw new Error('No label/serial text found. This may be an image-only PDF; use a searchable PDF or CSV/TXT export.');
+ return {rows,pages:pageCount};
 }
 `;
 source=source.slice(0,start)+replacement+source.slice(end);
 fs.writeFileSync(file,source);
-console.log('PDF parser hardened: ignores same-token text-layer repeats within a small coordinate tolerance while preserving genuine duplicates at separate positions.');
+console.log('PDF parser updated: pairs only physically adjacent label/serial text tokens on each page, avoiding hidden QR/text-layer duplicates.');
