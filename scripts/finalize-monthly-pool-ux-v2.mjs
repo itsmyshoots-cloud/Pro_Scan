@@ -23,8 +23,10 @@ changed=true;
 const resetHandler="const resetMonthlyPlanEditForm=()=>{const plan=monthlyPlans.find(row=>row.id===monthlyEditingId);if(!plan)return;setMonthlyForm({plan_month:String(plan.plan_month||'').slice(0,7),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',mrp:String(plan.mrp??'')});setMonthlyRows([]);setMonthlyFile('');setMonthlyMessage('Edit form reset. The saved Monthly Plan and existing serial pool are unchanged. You can now choose a different PDF.');};";
 if(!source.includes('const resetMonthlyPlanEditForm=')){source=source.replace(loaderAnchor,resetHandler+'\n'+loaderAnchor);changed=true;}
 if(source.includes("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>")){source=source.replace("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>","onClick={resetMonthlyPlanEditForm}>Reset edit form</button><button type='button' disabled={monthlyBusy} onClick={cancelMonthlyPlanEdit}>Cancel edit</button>");changed=true;}
-const saveMatch=source.match(/const\\s+saveMonthlyPlan\\s*=\\s*async\\s*\\([^)]*\\)\\s*=>\\s*\\{/);const saveStart=saveMatch?.index??-1;
-const deleteStartMatch=source.match(/const\\s+deleteMonthlyPlan\\s*=\\s*async\\s*\\(?\\s*plan\\s*\\)?\\s*=>\\s*\\{/);const saveEnd=deleteStartMatch?.index??-1;
+const saveToken=source.indexOf('saveMonthlyPlan');
+const deleteToken=source.indexOf('deleteMonthlyPlan',saveToken);
+const saveStart=saveToken<0?-1:source.lastIndexOf('const ',saveToken);
+const saveEnd=deleteToken<0?-1:source.lastIndexOf('const ',deleteToken);
 if(saveStart<0||saveEnd<0)throw new Error('Monthly Plan save handler boundaries not found.');
 const saveHandler=String.raw`const saveMonthlyPlan=async()=>{
  const editingId=monthlyEditingId,current=monthlyPlans.find(plan=>plan.id===editingId);
