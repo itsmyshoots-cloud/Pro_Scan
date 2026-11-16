@@ -3,7 +3,7 @@ const file='src/App.jsx';
 let source=fs.readFileSync(file,'utf8');
 let changed=false;
 const portalImport="import {createPortal} from 'react-dom';";
-if(!source.includes('createPortal(')&&!source.includes("import {createPortal} from 'react-dom'")){source=source.replace("import React,{useEffect,useMemo,useRef,useState} from 'react';","import React,{useEffect,useMemo,useRef,useState} from 'react';\\n"+portalImport);changed=true;}
+if(!source.includes('createPortal(')&&!source.includes("import {createPortal} from 'react-dom'")){source=source.replace("import React,{useEffect,useMemo,useRef,useState} from 'react';","import React,{useEffect,useMemo,useRef,useState} from 'react';\n"+portalImport);changed=true;}
 const stateAnchor=" const [monthlyEditingId,setMonthlyEditingId]=useState('');";
 if(source.includes(stateAnchor)&&!source.includes("setTimeout(()=>setMonthlyMessage(''),4000)")){
  source=source.replace(stateAnchor,stateAnchor+"\n useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);");
