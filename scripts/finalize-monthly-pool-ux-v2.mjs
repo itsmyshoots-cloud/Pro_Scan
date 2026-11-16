@@ -24,6 +24,10 @@ const resetHandler="const resetMonthlyPlanEditForm=()=>{const plan=monthlyPlans.
 if(!source.includes('const resetMonthlyPlanEditForm=')){source=source.replace(loaderAnchor,resetHandler+'\n'+loaderAnchor);changed=true;}
 if(source.includes("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>")){source=source.replace("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>","onClick={resetMonthlyPlanEditForm}>Reset edit form</button><button type='button' disabled={monthlyBusy} onClick={cancelMonthlyPlanEdit}>Cancel edit</button>");changed=true;}
 // Save and delete handlers are maintained in add-monthly-production-plan.mjs; do not re-detect/rewrite them here.
+// Ensure the edit backdrop calls an existing close handler; the old runtime-fix callback was never defined.
+source=source.replaceAll('onClick={resetMonthlyPlanEditFromRuntimeFix}','onClick={cancelMonthlyPlanEdit}');
+// Remove stale quantity-based disabled state. The allocation guard below is the authoritative restriction.
+source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");
 const qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
 const newQty="{monthlyEditingId?<div className='monthly-import-count monthly-pool-stats'><div><span>Current available</span><strong>{Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated).toLocaleString()}</strong></div><div><span>New pool ready</span><strong>{monthlyRows.length.toLocaleString()}</strong></div><div><span>Final available</span><strong>{(Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated)+monthlyRows.length).toLocaleString()}</strong></div></div>:<div className='monthly-import-count monthly-pool-create-count'><span>Final quantity</span><strong>{monthlyRows.length.toLocaleString()}</strong></div>}";
 if(qtyMarkupPattern.test(source)){source=source.replace(qtyMarkupPattern,newQty);changed=true;}
