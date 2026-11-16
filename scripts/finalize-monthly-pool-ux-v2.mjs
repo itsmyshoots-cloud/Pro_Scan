@@ -26,7 +26,7 @@ if(source.includes("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>")){sour
 const saveStart=source.indexOf('const saveMonthlyPlan=async()=>{');
 const saveEnd=source.indexOf('\nconst deleteMonthlyPlan=async plan=>{',saveStart);
 if(saveStart<0||saveEnd<0)throw new Error('Monthly Plan save handler boundaries not found.');
-const saveHandler=String.raw\`const saveMonthlyPlan=async()=>{
+const saveHandler=String.raw`const saveMonthlyPlan=async()=>{
  const editingId=monthlyEditingId,current=monthlyPlans.find(plan=>plan.id===editingId);
  if(!editingId||!current){setMonthlyMessage('Select a Monthly Plan to edit.');return;}
  const month=String(monthlyForm.plan_month||'').trim(),brand=monthlyForm.brand.trim(),product=monthlyForm.product_name.trim(),model=monthlyForm.model.trim(),mrp=Number(monthlyForm.mrp);
@@ -56,12 +56,12 @@ const saveHandler=String.raw\`const saveMonthlyPlan=async()=>{
   setMonthlyMessage('Monthly Plan updated successfully. '+added.toLocaleString()+' additional serial-label pairs saved.');
  }catch(error){setMonthlyMessage(error?.message||'Could not save Monthly Plan.');}
  finally{setMonthlyBusy(false);}
-};\`;
+};`;
 source=source.slice(0,saveStart)+saveHandler+source.slice(saveEnd);
 const deleteStart=source.indexOf('const deleteMonthlyPlan=async plan=>{');
 const deleteEnd=source.indexOf('\n\nconst navAnchor=',deleteStart);
 if(deleteStart<0||deleteEnd<0)throw new Error('Monthly Plan delete handler boundaries not found.');
-const deleteHandler=String.raw\`const deleteMonthlyPlan=async plan=>{
+const deleteHandler=String.raw`const deleteMonthlyPlan=async plan=>{
  if(!plan||monthlyBusy)return;
  if(!window.confirm('Remove Monthly Plan '+plan.brand+' · '+plan.product_name+' · '+plan.model+'? The unused monthly serial pool will also be deleted.'))return;
  setMonthlyBusy(true);setMonthlyMessage('Checking Daily Plan allocations…');
@@ -76,7 +76,7 @@ const deleteHandler=String.raw\`const deleteMonthlyPlan=async plan=>{
   setMonthlyMessage('Monthly Plan deleted successfully. Its unused serial pool was removed.');
  }catch(error){setMonthlyMessage(error?.message||'Could not delete Monthly Plan.');}
  finally{setMonthlyBusy(false);}
-};\`;
+};`;
 source=source.slice(0,deleteStart)+deleteHandler+source.slice(deleteEnd);
 source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");
 const qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
