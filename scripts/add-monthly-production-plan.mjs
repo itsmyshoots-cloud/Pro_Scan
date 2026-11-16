@@ -38,32 +38,40 @@ const saveMonthlyPlan=async()=>{
   if(!/^\d{4}-\d{2}$/.test(month)){setMonthlyMessage('Select a valid production month.');return;}
   if(!brand||!product||!model){setMonthlyMessage('Enter Brand, Product and Model.');return;}
   if(!Number.isFinite(mrp)||mrp<0){setMonthlyMessage('Enter a valid MRP.');return;}
-  setMonthlyBusy(true);setMonthlyMessage('Saving Monthly Plan changes…');
+  setMonthlyBusy(true);setMonthlyMessage('Saving Monthly Plan and checking its serial pool…');
+  const insertedSerials=[];
   try{
     const allocatedCount=await getMonthlyPlanDailyAllocationCount(editingId);
     if(allocatedCount>0)throw new Error('This Monthly Plan cannot be edited because '+allocatedCount.toLocaleString()+' serial(s) are allocated to non-cancelled Daily Plans. Cancel those Daily Plans first.');
-    const {data:updated,error:updateError}=await supabase.from('monthly_production_plans').update({plan_month:month+'-01',brand,product_name:product,model,mrp}).eq('id',editingId).select('id').maybeSingle();
-    if(updateError)throw new Error('Could not update Monthly Plan details: '+updateError.message);
-    if(!updated?.id)throw new Error('No Monthly Plan row was updated. Check your Planner/Super Admin database permissions.');
-    let added=0;
-    if(monthlyRows.length){
-      const {data:lastRow,error:lastError}=await supabase.from('monthly_plan_serials').select('sequence_no').eq('monthly_plan_id',editingId).order('sequence_no',{ascending:false}).limit(1).maybeSingle();
-      if(lastError)throw new Error('Plan details were saved, but serial sequence lookup failed: '+lastError.message);
-      const first=Number(lastRow?.sequence_no||0)+1;
-      const payload=monthlyRows.map((row,index)=>({monthly_plan_id:editingId,label_number:String(row.label_number).trim(),serial_number:String(row.serial_number).trim(),sequence_no:first+index}));
-      for(let offset=0;offset<payload.length;offset+=250){
-        const batch=payload.slice(offset,offset+250);
-        const {error:insertError}=await supabase.from('monthly_plan_serials').insert(batch);
-        if(insertError)throw new Error('Plan details saved, but serial batch '+(Math.floor(offset/250)+1)+' failed: '+insertError.message);
-        added+=batch.length;
-      }
+    const {count:existingCount,error:countError}=await supabase.from('monthly_plan_serials').select('id',{count:'exact',head:true}).eq('monthly_plan_id',editingId);
+    if(countError)throw new Error('Could not count the existing serial pool: '+countError.message);
+    const {data:lastRow,error:lastError}=await supabase.from('monthly_plan_serials').select('sequence_no').eq('monthly_plan_id',editingId).order('sequence_no',{ascending:false}).limit(1).maybeSingle();
+    if(lastError)throw new Error('Could not check the next serial sequence: '+lastError.message);
+    const first=Number(lastRow?.sequence_no||0)+1;
+    const payload=monthlyRows.map((row,index)=>({monthly_plan_id:editingId,label_number:String(row.label_number).trim(),serial_number:String(row.serial_number).trim(),sequence_no:first+index}));
+    for(let offset=0;offset<payload.length;offset+=250){
+      const batch=payload.slice(offset,offset+250);
+      const {error:insertError}=await supabase.from('monthly_plan_serials').insert(batch);
+      if(insertError)throw new Error('Additional serial batch '+(Math.floor(offset/250)+1)+' failed: '+insertError.message);
+      insertedSerials.push(...batch.map(row=>row.serial_number));
     }
+    const finalQty=Number(existingCount||0)+payload.length;
+    const {data:updated,error:updateError}=await supabase.from('monthly_production_plans').update({plan_month:month+'-01',brand,product_name:product,model,mrp,total_qty:finalQty}).eq('id',editingId).select('id').maybeSingle();
+    if(updateError)throw new Error('Could not save Monthly Plan details: '+updateError.message);
+    if(!updated?.id)throw new Error('No Monthly Plan row was updated. Check your Planner/Super Admin database permissions.');
     await loadMonthlyPlans();
     setMonthlyEditingId('');setMonthlyRows([]);setMonthlyFile('');
     setMonthlyForm({plan_month:month,brand:'',product_name:'',model:'',mrp:''});
-    setMonthlyMessage('Monthly Plan updated successfully. '+added.toLocaleString()+' additional serial-label pairs saved.');
-  }catch(error){setMonthlyMessage(error?.message||'Could not update the Monthly Plan.');}
-  finally{setMonthlyBusy(false);}
+    setMonthlyMessage('Monthly Plan saved. '+payload.length.toLocaleString()+' new serial-label pairs added. Final pool: '+finalQty.toLocaleString()+'.');
+  }catch(error){
+    if(insertedSerials.length){
+      for(let offset=0;offset<insertedSerials.length;offset+=150){
+        const {error:rollbackError}=await supabase.from('monthly_plan_serials').delete().eq('monthly_plan_id',editingId).in('serial_number',insertedSerials.slice(offset,offset+150));
+        if(rollbackError)console.error('Monthly Plan serial rollback failed:',rollbackError);
+      }
+    }
+    setMonthlyMessage(error?.message||'Could not save the Monthly Plan. Existing serial pool was preserved.');
+  }finally{setMonthlyBusy(false);}
 };
 const deleteMonthlyPlan=async plan=>{
   if(!plan||monthlyBusy)return;
