@@ -4,7 +4,7 @@ let source=fs.readFileSync(file,'utf8');
 let changed=false;
 const stateAnchor=" const [monthlyEditingId,setMonthlyEditingId]=useState('');";
 if(source.includes(stateAnchor)&&!source.includes("setTimeout(()=>setMonthlyMessage(''),4000)")){
- source=source.replace(stateAnchor,stateAnchor+"\\n useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);");
+ source=source.replace(stateAnchor,stateAnchor+"\n useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);");
  changed=true;
 }
 if(source.includes(stateAnchor)&&!source.includes('monthlyPoolStats')){
