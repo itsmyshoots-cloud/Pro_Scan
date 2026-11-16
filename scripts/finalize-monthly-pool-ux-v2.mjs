@@ -86,7 +86,7 @@ else if(source.includes("planningMetrics.monthly?.[plan.id]?.planned||0)>0")){so
 const noticeMarker="{monthlyMessage&&<div className='notice'>{monthlyMessage}</div>}";
 const toastMarkup="{monthlyMessage&&createPortal(<div className='notice monthly-global-toast' role='status' aria-live='polite'><span>{monthlyMessage}</span><button type='button' aria-label='Dismiss notification' onClick={()=>setMonthlyMessage('')}>×</button></div>,document.body)}";
 if(source.includes(noticeMarker)){source=source.replace(noticeMarker,toastMarkup);changed=true;}
-else if(source.includes("monthly-global-toast' role='status'")){source=source.replace(/\{monthlyMessage&&<div className='notice monthly-global-toast'[\s\S]*?<\\/div>\}/,toastMarkup);changed=true;}
+else if(source.includes("monthly-global-toast' role='status'")){const toastStart=source.indexOf('{monthlyMessage&&<div className=\\'notice monthly-global-toast\\'');const toastEnd=source.indexOf('</div>}',toastStart);if(toastStart>=0&&toastEnd>=0){source=source.slice(0,toastStart)+toastMarkup+source.slice(toastEnd+7);changed=true;}}
 const cssFile='src/monthly-production.css';
 let css=fs.readFileSync(cssFile,'utf8');
 if(!css.includes('monthly-pool-ux-v2')){
