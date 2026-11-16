@@ -21,7 +21,7 @@ changed=true;
 const resetHandler="const resetMonthlyPlanEditForm=()=>{const plan=monthlyPlans.find(row=>row.id===monthlyEditingId);if(!plan)return;setMonthlyForm({plan_month:String(plan.plan_month||'').slice(0,7),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',mrp:String(plan.mrp??'')});setMonthlyRows([]);setMonthlyFile('');setMonthlyMessage('Edit form reset. The saved Monthly Plan and existing serial pool are unchanged. You can now choose a different PDF.');};";
 if(!source.includes('const resetMonthlyPlanEditForm=')){source=source.replace(loaderAnchor,resetHandler+'\n'+loaderAnchor);changed=true;}
 if(source.includes("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>")){source=source.replace("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>","onClick={resetMonthlyPlanEditForm}>Reset edit form</button><button type='button' disabled={monthlyBusy} onClick={cancelMonthlyPlanEdit}>Cancel edit</button>");changed=true;}
-const saveDeletePatch=String.raw\`
+const saveDeletePatch=String.raw`
 const saveStart=source.indexOf('const saveMonthlyPlan=async()=>{');
 const deleteStart=source.indexOf('const deleteMonthlyPlan=async plan=>{',saveStart);
 if(saveStart<0||deleteStart<0)throw new Error('Monthly save/delete handlers not found.');
@@ -73,7 +73,7 @@ const deleteHandler=String.raw\`const deleteMonthlyPlan=async plan=>{
 };\`;
 source=source.slice(0,dStart)+deleteHandler+source.slice(dEnd);
 source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");
-\`;
+`;
 const qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
 const newQty="{monthlyEditingId?<div className='monthly-import-count monthly-pool-stats'><div><span>Current available</span><strong>{Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated).toLocaleString()}</strong></div><div><span>New pool ready</span><strong>{monthlyRows.length.toLocaleString()}</strong></div><div><span>Final available</span><strong>{(Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated)+monthlyRows.length).toLocaleString()}</strong></div></div>:<div className='monthly-import-count monthly-pool-create-count'><span>Final quantity</span><strong>{monthlyRows.length.toLocaleString()}</strong></div>}";
 if(qtyMarkupPattern.test(source)){source=source.replace(qtyMarkupPattern,newQty);changed=true;}
