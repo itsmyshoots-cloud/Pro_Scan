@@ -5,11 +5,7 @@ let changed=false;
 const portalImport="import {createPortal} from 'react-dom';";
 if(!source.includes('createPortal(')&&!source.includes("import {createPortal} from 'react-dom'")){source=source.replace("import React,{useEffect,useMemo,useRef,useState} from 'react';","import React,{useEffect,useMemo,useRef,useState} from 'react';\n"+portalImport);changed=true;}
 const stateAnchor=" const [monthlyEditingId,setMonthlyEditingId]=useState('');";
-const cancelHandler=` const cancelMonthlyPlanEdit=()=>{setMonthlyEditingId('');setMonthlyRows([]);setMonthlyFile('');setMonthlyForm({plan_month:new Date().toISOString().slice(0,7),brand:'',product_name:'',model:'',mrp:''});setMonthlyMessage('Monthly Plan editing cancelled.');};`;
-if(source.includes("onClick={cancelMonthlyPlanEdit}")&&!source.includes('const cancelMonthlyPlanEdit=')){
- source=source.replace(loaderAnchor,cancelHandler+'\\n'+loaderAnchor);
- changed=true;
-}
+
 if(source.includes(stateAnchor)&&!source.includes("setTimeout(()=>setMonthlyMessage(''),4000)")){
  source=source.replace(stateAnchor,stateAnchor+"\n useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);");
  changed=true;
@@ -19,6 +15,14 @@ if(source.includes(stateAnchor)&&!source.includes('monthlyPoolStats')){
  changed=true;
 }
 const loaderAnchor=" const loadMonthlyPlans=async()=>{";
+const actionAnchor=" const loadMonthlyPlans=async()=>{";
+if(!source.includes('const cancelMonthlyPlanEdit=')){
+ const actions=` const cancelMonthlyPlanEdit=()=>{setMonthlyEditingId('');setMonthlyRows([]);setMonthlyFile('');setMonthlyForm({plan_month:new Date().toISOString().slice(0,7),brand:'',product_name:'',model:'',mrp:''});setMonthlyMessage('Monthly Plan editing cancelled.');};
+ const saveMonthlyPlan=async()=>{const id=monthlyEditingId,month=String(monthlyForm.plan_month||'').trim(),brand=monthlyForm.brand.trim(),product=monthlyForm.product_name.trim(),model=monthlyForm.model.trim(),mrp=Number(monthlyForm.mrp);if(!id)return setMonthlyMessage('Select a Monthly Plan to edit.');if(!/^\\d{4}-\\d{2}$/.test(month)||!brand||!product||!model||!Number.isFinite(mrp)||mrp<0)return setMonthlyMessage('Enter a valid month, brand, product, model and MRP.');setMonthlyBusy(true);setMonthlyMessage('Saving Monthly Plan…');const inserted=[];try{const allocated=await getMonthlyPlanDailyAllocationCount(id);if(allocated)throw new Error('Cannot edit: '+allocated+' serial(s) are allocated to non-cancelled Daily Plans.');const {count,error:countError}=await supabase.from('monthly_plan_serials').select('id',{count:'exact',head:true}).eq('monthly_plan_id',id);if(countError)throw countError;const {data:last,error:lastError}=await supabase.from('monthly_plan_serials').select('sequence_no').eq('monthly_plan_id',id).order('sequence_no',{ascending:false}).limit(1).maybeSingle();if(lastError)throw lastError;const rows=monthlyRows.map((r,i)=>({monthly_plan_id:id,label_number:String(r.label_number).trim(),serial_number:String(r.serial_number).trim(),sequence_no:Number(last?.sequence_no||0)+i+1}));for(let i=0;i<rows.length;i+=250){const batch=rows.slice(i,i+250);const {error}=await supabase.from('monthly_plan_serials').insert(batch);if(error)throw error;inserted.push(...batch.map(r=>r.serial_number));}const {data:updated,error:updateError}=await supabase.from('monthly_production_plans').update({plan_month:month+'-01',brand,product_name:product,model,mrp,total_qty:Number(count||0)+rows.length}).eq('id',id).select('id').maybeSingle();if(updateError)throw updateError;if(!updated)throw new Error('No row updated. Check Planner/Super Admin permissions.');await loadMonthlyPlans();setMonthlyEditingId('');setMonthlyRows([]);setMonthlyFile('');setMonthlyMessage('Monthly Plan saved successfully.');}catch(e){for(let i=0;i<inserted.length;i+=150)await supabase.from('monthly_plan_serials').delete().eq('monthly_plan_id',id).in('serial_number',inserted.slice(i,i+150));setMonthlyMessage(e?.message||'Could not save Monthly Plan.');}finally{setMonthlyBusy(false);}};
+ const deleteMonthlyPlan=async plan=>{if(!plan||monthlyBusy)return;if(!window.confirm('Delete this Monthly Plan and its serial pool?'))return;setMonthlyBusy(true);setMonthlyMessage('Checking allocations…');try{const allocated=await getMonthlyPlanDailyAllocationCount(plan.id);if(allocated)throw new Error('Cannot delete: '+allocated+' serial(s) are allocated to non-cancelled Daily Plans.');const {data,error}=await supabase.from('monthly_production_plans').delete().eq('id',plan.id).select('id');if(error)throw error;if(!data?.length)throw new Error('No row deleted. Check Planner/Super Admin permissions.');if(monthlyEditingId===plan.id)cancelMonthlyPlanEdit();setMonthlySelectedId('');await loadMonthlyPlans();setMonthlyMessage('Monthly Plan deleted successfully.');}catch(e){setMonthlyMessage(e?.message||'Could not delete Monthly Plan.');}finally{setMonthlyBusy(false);}};
+`;
+ source=source.replace(actionAnchor,actions+actionAnchor);changed=true;
+}
 const helperStart=source.indexOf('const getMonthlyPlanDailyAllocationCount=async planId=>{');
 const helperEnd=source.indexOf(loaderAnchor,helperStart);
 if(helperStart<0||helperEnd<0)throw new Error('Monthly Plan allocation helper insertion range not found.');
