@@ -2,6 +2,8 @@ import fs from 'fs';
 const file='src/App.jsx';
 let source=fs.readFileSync(file,'utf8');
 let changed=false;
+const portalImport="import {createPortal} from 'react-dom';";
+if(!source.includes('createPortal(')&&!source.includes("import {createPortal} from 'react-dom'")){source=source.replace("import React,{useEffect,useMemo,useRef,useState} from 'react';","import React,{useEffect,useMemo,useRef,useState} from 'react';\\n"+portalImport);changed=true;}
 const stateAnchor=" const [monthlyEditingId,setMonthlyEditingId]=useState('');";
 if(source.includes(stateAnchor)&&!source.includes("setTimeout(()=>setMonthlyMessage(''),4000)")){
  source=source.replace(stateAnchor,stateAnchor+"\n useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);");
@@ -82,7 +84,9 @@ const oldRemove="disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id
 if(source.includes(oldRemove)){source=source.replace(oldRemove,"disabled={monthlyBusy} title='Remove this Monthly Plan'");changed=true;}
 else if(source.includes("planningMetrics.monthly?.[plan.id]?.planned||0)>0")){source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");changed=true;}
 const noticeMarker="{monthlyMessage&&<div className='notice'>{monthlyMessage}</div>}";
-if(source.includes(noticeMarker)){source=source.replace(noticeMarker,"{monthlyMessage&&<div className='notice monthly-global-toast' role='status' aria-live='polite'><span>{monthlyMessage}</span><button type='button' aria-label='Dismiss notification' onClick={()=>setMonthlyMessage('')}>×</button></div>}");changed=true;}
+const toastMarkup="{monthlyMessage&&createPortal(<div className='notice monthly-global-toast' role='status' aria-live='polite'><span>{monthlyMessage}</span><button type='button' aria-label='Dismiss notification' onClick={()=>setMonthlyMessage('')}>×</button></div>,document.body)}";
+if(source.includes(noticeMarker)){source=source.replace(noticeMarker,toastMarkup);changed=true;}
+else if(source.includes("monthly-global-toast' role='status'")){source=source.replace(/\{monthlyMessage&&<div className='notice monthly-global-toast'[\s\S]*?<\\/div>\}/,toastMarkup);changed=true;}
 const cssFile='src/monthly-production.css';
 let css=fs.readFileSync(cssFile,'utf8');
 if(!css.includes('monthly-pool-ux-v2')){
@@ -90,7 +94,7 @@ if(!css.includes('monthly-pool-ux-v2')){
 /* monthly-pool-ux-v2 */
 .monthly-global-toast{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:14px!important}.monthly-global-toast button{border:0!important;background:transparent!important;color:inherit!important;font-size:22px!important;line-height:1!important;padding:0 2px!important;cursor:pointer!important;flex:0 0 auto!important}
 
-.monthly-global-toast{position:fixed!important;top:auto!important;bottom:22px!important;right:22px!important;left:auto!important;z-index:20050!important;width:min(620px,calc(100vw - 36px))!important;margin:0!important;padding:14px 18px!important;box-shadow:0 12px 36px rgba(15,23,42,.22)!important;border:1px solid #b9d4ff!important;background:#eff6ff!important;color:#1746a2!important;border-radius:12px!important;animation:monthlyToastIn .18s ease-out}
+.monthly-global-toast{position:fixed!important;top:auto!important;bottom:22px!important;right:22px!important;left:auto!important;z-index:2147483000!important;width:min(620px,calc(100vw - 36px))!important;margin:0!important;padding:14px 18px!important;box-shadow:0 12px 36px rgba(15,23,42,.22)!important;border:1px solid #b9d4ff!important;background:#eff6ff!important;color:#1746a2!important;border-radius:12px!important;animation:monthlyToastIn .18s ease-out}
 @keyframes monthlyToastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 .monthly-pool-stats{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important;min-width:0!important}
 .monthly-pool-stats>div{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:10px 12px;border:1px solid #d9e6f8;border-radius:12px;background:#f7faff;min-width:0}
@@ -109,7 +113,7 @@ if(!css.includes('monthly-pool-ux-v2')){
 .monthly-create-panel.is-edit-modal .monthly-upload-row{grid-template-columns:minmax(0,1fr) minmax(390px,1.2fr)!important}
 .monthly-create-panel.is-edit-modal .monthly-upload-row>.primary{grid-column:2!important;min-height:48px!important}
 .monthly-create-panel.is-edit-modal .monthly-upload-row>button:not(.primary){grid-column:1/-1!important}
-.monthly-global-toast{position:fixed!important;top:auto!important;bottom:22px!important;right:22px!important;left:auto!important;z-index:20050!important;width:min(620px,calc(100vw - 36px))!important;max-width:calc(100vw - 36px)!important;box-sizing:border-box!important}
+.monthly-global-toast{position:fixed!important;top:auto!important;bottom:22px!important;right:22px!important;left:auto!important;z-index:2147483000!important;width:min(620px,calc(100vw - 36px))!important;max-width:calc(100vw - 36px)!important;box-sizing:border-box!important}
 @media(max-width:1050px){.monthly-create-panel .monthly-upload-row{grid-template-columns:minmax(0,1fr) minmax(340px,1fr)!important}.monthly-create-panel .monthly-upload-row>.primary{grid-column:1/-1!important}.monthly-create-panel.is-edit-modal .monthly-upload-row{grid-template-columns:minmax(0,1fr)!important}.monthly-create-panel.is-edit-modal .monthly-upload-row>.primary{grid-column:1!important}}
 @media(max-width:680px){.monthly-create-panel .monthly-upload-row{grid-template-columns:minmax(0,1fr)!important}.monthly-create-panel .monthly-pool-stats{grid-template-columns:repeat(3,minmax(0,1fr))!important}.monthly-create-panel .monthly-pool-stats span{font-size:9px!important}.monthly-create-panel .monthly-pool-stats strong{font-size:19px!important}.monthly-create-panel.is-edit-modal{width:calc(100vw - 18px)!important}.monthly-create-panel.is-edit-modal .monthly-upload-row{grid-template-columns:minmax(0,1fr)!important}}
 
