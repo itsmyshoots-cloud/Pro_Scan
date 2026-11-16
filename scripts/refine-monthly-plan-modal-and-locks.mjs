@@ -39,6 +39,10 @@ const oldEditAction="onClick={()=>startEditMonthlyPlan(plan)}";
 if(source.includes(oldEditAction)){source=source.replaceAll(oldEditAction,"onClick={()=>void openMonthlyPlanEditWithAllocationGuard(plan)}");changed=true;}
 else if(!source.includes('openMonthlyPlanEditWithAllocationGuard(plan)'))throw new Error('Could not locate Monthly Plan edit button handler.');
 
+const formEndMarker="</section><section id='monthly-available-plans'";
+if(source.includes(formEndMarker)){source=source.replace(formEndMarker,"</section></><section id='monthly-available-plans'");changed=true;}
+else if(!source.includes("</section></><section id='monthly-available-plans'"))throw new Error('Could not close the Monthly Plan modal fragment before Available Plans.');
+
 const removeDisabled="disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}";
 if(source.includes(removeDisabled)){source=source.replaceAll(removeDisabled,"disabled={monthlyBusy}");changed=true;}
 
