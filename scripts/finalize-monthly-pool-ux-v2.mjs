@@ -23,8 +23,8 @@ changed=true;
 const resetHandler="const resetMonthlyPlanEditForm=()=>{const plan=monthlyPlans.find(row=>row.id===monthlyEditingId);if(!plan)return;setMonthlyForm({plan_month:String(plan.plan_month||'').slice(0,7),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',mrp:String(plan.mrp??'')});setMonthlyRows([]);setMonthlyFile('');setMonthlyMessage('Edit form reset. The saved Monthly Plan and existing serial pool are unchanged. You can now choose a different PDF.');};";
 if(!source.includes('const resetMonthlyPlanEditForm=')){source=source.replace(loaderAnchor,resetHandler+'\n'+loaderAnchor);changed=true;}
 if(source.includes("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>")){source=source.replace("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>","onClick={resetMonthlyPlanEditForm}>Reset edit form</button><button type='button' disabled={monthlyBusy} onClick={cancelMonthlyPlanEdit}>Cancel edit</button>");changed=true;}
-const saveStart=source.indexOf('const saveMonthlyPlan=async()=>{');
-const saveEnd=source.indexOf('const deleteMonthlyPlan=async plan=>{',saveStart);
+const saveMatch=source.match(/const\\s+saveMonthlyPlan\\s*=\\s*async\\s*\\([^)]*\\)\\s*=>\\s*\\{/);const saveStart=saveMatch?.index??-1;
+const deleteStartMatch=source.match(/const\\s+deleteMonthlyPlan\\s*=\\s*async\\s*\\(?\\s*plan\\s*\\)?\\s*=>\\s*\\{/);const saveEnd=deleteStartMatch?.index??-1;
 if(saveStart<0||saveEnd<0)throw new Error('Monthly Plan save handler boundaries not found.');
 const saveHandler=String.raw`const saveMonthlyPlan=async()=>{
  const editingId=monthlyEditingId,current=monthlyPlans.find(plan=>plan.id===editingId);
@@ -58,7 +58,7 @@ const saveHandler=String.raw`const saveMonthlyPlan=async()=>{
  finally{setMonthlyBusy(false);}
 };`;
 source=source.slice(0,saveStart)+saveHandler+source.slice(saveEnd);
-const deleteStart=source.indexOf('const deleteMonthlyPlan=async plan=>{');
+const deleteStart=source.indexOf('const deleteMonthlyPlan=',saveStart);
 const deleteEnd=source.indexOf('const navAnchor=',deleteStart);
 if(deleteStart<0||deleteEnd<0)throw new Error('Monthly Plan delete handler boundaries not found.');
 const deleteHandler=String.raw`const deleteMonthlyPlan=async plan=>{
