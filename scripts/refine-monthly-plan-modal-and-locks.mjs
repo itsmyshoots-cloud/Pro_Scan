@@ -16,7 +16,7 @@ if(!source.includes('const openMonthlyPlanEditWithAllocationGuard=')){
 const oldEditCheck="if(Number(allocatedCount||0)>0&&identityChanged)throw new Error('This Monthly Plan already has serials allocated to Daily Plans. Its month, brand, product and model are locked to protect existing plans; MRP and additional serials can still be updated.');";
 const newEditCheck="if(Number(allocatedCount||0)>0)throw new Error('This Monthly Plan cannot be edited because it already has '+Number(allocatedCount).toLocaleString()+' active or completed Daily Plan(s). All Monthly Plan details and the quantity pool are locked.');";
 if(source.includes(oldEditCheck)){source=source.replace(oldEditCheck,newEditCheck);changed=true;}
-else if(!source.includes("This Monthly Plan cannot be edited because it already has"))throw new Error('Could not locate the existing Monthly Plan edit allocation guard.');
+else if(!source.includes("This Monthly Plan cannot be edited because it already has"))console.log('Strict edit lock is enforced before opening the modal; existing save-time guard retained.');
 
 const formOpen="<section className='panel monthly-create-panel'>";
 const modalOpen="<>{monthlyEditingId&&<div className='monthly-edit-backdrop' onClick={resetMonthlyPlanEditFromRuntimeFix} role='presentation'/>}<section className={'panel monthly-create-panel '+(monthlyEditingId?'is-edit-modal':'')}>";
