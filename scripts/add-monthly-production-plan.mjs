@@ -40,10 +40,8 @@ const saveMonthlyPlan=async()=>{
   if(!Number.isFinite(mrp)||mrp<0)return setMonthlyMessage('Enter a valid MRP.');
   setMonthlyBusy(true);setMonthlyMessage('Saving Monthly Plan changes…');
   try{
-    const {count:allocatedCount,error:allocationError}=await supabase.from('production_plans').select('id',{count:'exact',head:true}).eq('monthly_plan_id',editingId).neq('status','cancelled');
-    if(allocationError)throw new Error('Could not check Daily Plan allocations: '+allocationError.message);
-    const identityChanged=String(current.plan_month||'').slice(0,7)!==month||String(current.brand||'')!==brand||String(current.product_name||'')!==product||String(current.model||'')!==model;
-    if(Number(allocatedCount||0)>0&&identityChanged)throw new Error('This Monthly Plan already has serials allocated to Daily Plans. Its month, brand, product and model are locked to protect existing plans; MRP and additional serials can still be updated.');
+    const allocatedCount=await getMonthlyPlanDailyAllocationCount(editingId);
+    if(allocatedCount>0)throw new Error('This Monthly Plan cannot be edited because '+allocatedCount.toLocaleString()+' serial(s) are already allocated to Daily Plans.');
     const {error:updateError}=await supabase.from('monthly_production_plans').update({plan_month:month+'-01',brand,product_name:product,model,mrp}).eq('id',editingId);
     if(updateError)throw new Error(updateError.message);
     let added=0;
@@ -68,9 +66,8 @@ const deleteMonthlyPlan=async plan=>{
   if(!window.confirm('Remove Monthly Plan '+plan.brand+' · '+plan.product_name+' · '+plan.model+'? This permanently removes its unused serial pool.'))return;
   setMonthlyBusy(true);setMonthlyMessage('Checking Monthly Plan allocations…');
   try{
-    const {count:dailyPlanCount,error:allocationError}=await supabase.from('production_plans').select('id',{count:'exact',head:true}).eq('monthly_plan_id',plan.id);
-    if(allocationError)throw new Error('Could not check linked Daily Plans: '+allocationError.message);
-    if(Number(dailyPlanCount||0)>0)throw new Error('This Monthly Plan cannot be removed because it is linked to '+Number(dailyPlanCount).toLocaleString()+' Daily Plan(s), including cancelled plans. Remove or unlink those Daily Plans first.');
+    const dailyPlanCount=await getMonthlyPlanDailyAllocationCount(plan.id);
+    if(dailyPlanCount>0)throw new Error('This Monthly Plan cannot be removed because '+dailyPlanCount.toLocaleString()+' serial(s) are allocated to Daily Plans.');
     // monthly_plan_serials has ON DELETE CASCADE; deleting the parent removes its unused pool atomically.
     const {error:planError,count:deletedCount}=await supabase.from('monthly_production_plans').delete({count:'exact'}).eq('id',plan.id);
     if(planError)throw new Error('Could not remove the Monthly Plan: '+planError.message);
