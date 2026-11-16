@@ -1,24 +1,30 @@
 import fs from 'fs';
-const file='src/App.jsx'; let source=fs.readFileSync(file,'utf8');
-const stateAnchor=" const [monthlyPlans,setMonthlyPlans]=useState([]);";
-if(!source.includes(stateAnchor)) throw new Error('Monthly state anchor not found.');
-if(!source.includes('monthlyLockedIds')) source=source.replace(stateAnchor,stateAnchor+" const [monthlyLockedIds,setMonthlyLockedIds]=useState(()=>new Set());");
+const file='src/App.jsx';
+let source=fs.readFileSync(file,'utf8');
+
+// The Monthly Plan UI is injected earlier in prebuild. Do not test for the
+// identifier alone: action markup can reference it before its React state exists.
+const stateDeclaration=/const\s*\[monthlyLockedIds\s*,\s*setMonthlyLockedIds\]\s*=\s*useState\(/;
+if(!stateDeclaration.test(source)){
+ const stateAnchor=" const [statusUpdatingId,setStatusUpdatingId]=useState('');";
+ if(!source.includes(stateAnchor))throw new Error('App state anchor for Monthly Plan lock state not found.');
+ source=source.replace(stateAnchor,stateAnchor+" const [monthlyLockedIds,setMonthlyLockedIds]=useState(()=>new Set());");
+}
+
 const loaderAnchor=" const loadMonthlyPlans=async()=>{";
-if(!source.includes(loaderAnchor)) throw new Error('Monthly loader anchor not found.');
-if(!source.includes('refreshMonthlyPlanLocks')){
+if(!source.includes(loaderAnchor))throw new Error('Monthly loader anchor not found.');
+if(!source.includes('const refreshMonthlyPlanLocks=async()=>')){
  const helper=" const refreshMonthlyPlanLocks=async()=>{try{const poolRows=[];for(let from=0;;from+=500){const {data,error}=await supabase.from('monthly_plan_serials').select('monthly_plan_id,serial_number').not('serial_number','is',null).range(from,from+499);if(error)throw error;poolRows.push(...(data||[]));if(!data||data.length<500)break;}const usedSerials=new Set();for(let from=0;;from+=500){const {data,error}=await supabase.from('plan_serials').select('serial_number').not('serial_number','is',null).range(from,from+499);if(error)throw error;for(const row of data||[]){const key=String(row.serial_number||'').trim().toUpperCase();if(key)usedSerials.add(key);}if(!data||data.length<500)break;}const locked=new Set();for(const row of poolRows){const key=String(row.serial_number||'').trim().toUpperCase();if(key&&usedSerials.has(key)&&row.monthly_plan_id)locked.add(String(row.monthly_plan_id));}setMonthlyLockedIds(locked);}catch(error){setMonthlyMessage('Could not check Monthly Plan locks: '+(error?.message||String(error)));}};\n useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans,plans,view]);\n";
  source=source.replace(loaderAnchor,helper+loaderAnchor);
 }else{
  source=source.replace("useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans]);","useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans,plans,view]);");
 }
-const guard="const startEditMonthlyPlan=plan=>{\n  if(!plan)return;";
-if(source.includes(guard)&&!source.includes("This Monthly Plan is locked because a Daily Plan has already been created.")) source=source.replace(guard,"const startEditMonthlyPlan=plan=>{\n  if(!plan)return;\n  // Keep the plan editable after Daily Plan allocation. saveMonthlyPlan protects identity fields while allowing safe changes such as MRP and adding serials.");
-const saveAnchor="const saveMonthlyPlan=async()=>{\n  const editingId=monthlyEditingId,current=monthlyPlans.find(plan=>plan.id===editingId);";
-if(source.includes(saveAnchor)&&!source.includes("A Daily Plan already exists for this Monthly Plan")) source=source.replace(saveAnchor,"const saveMonthlyPlan=async()=>{\n  const editingId=monthlyEditingId,current=monthlyPlans.find(plan=>plan.id===editingId);\n");
-const deleteAnchor="const deleteMonthlyPlan=async plan=>{\n  if(!plan)return;";
-if(source.includes(deleteAnchor)&&!source.includes("cannot be deleted because a Daily Plan already exists")) source=source.replace(deleteAnchor,"const deleteMonthlyPlan=async plan=>{\n  if(!plan)return;\n  if(monthlyLockedIds.has(String(plan.id))){setMonthlyMessage('This Monthly Plan cannot be deleted because a Daily Plan has already been created from it.');return;}");
-const oldButton="<button type='button' data-monthly-action='edit' data-monthly-plan-id={plan.id} title='Edit Monthly Plan' aria-label='Edit Monthly Plan'>✎</button><button type='button' data-monthly-action='delete' data-monthly-plan-id={plan.id} className='is-remove' title='Remove Monthly Plan' aria-label='Remove Monthly Plan'>⌫</button>";
-const newButton="<button type='button' data-monthly-action='edit' data-monthly-plan-id={plan.id} title={monthlyLockedIds.has(String(plan.id))?'Locked: Daily Plan already created':'Edit Monthly Plan'} aria-label='Edit Monthly Plan' disabled={monthlyBusy}>✎</button><button type='button' data-monthly-action='delete' data-monthly-plan-id={plan.id} className='is-remove' title={monthlyLockedIds.has(String(plan.id))?'Locked: Daily Plan already created':'Remove Monthly Plan'} aria-label='Remove Monthly Plan' disabled={monthlyBusy||monthlyLockedIds.has(String(plan.id))}>⌫</button>";
-if(source.includes(oldButton)) source=source.replace(oldButton,newButton);
-const cssFile='src/monthly-production.css'; if(fs.existsSync(cssFile)){let css=fs.readFileSync(cssFile,'utf8');if(!css.includes('monthly-lock-v1')) css += "\n/* monthly-lock-v1 */\n.monthly-table-actions button:disabled{opacity:.42!important;cursor:not-allowed!important}.monthly-table-actions button:disabled:hover{transform:none!important}\n";fs.writeFileSync(cssFile,css);}
-fs.writeFileSync(file,source); console.log('Monthly Plan lock-after-daily rule now detects Daily Plan allocations by matching monthly pool serials.');
+
+const cssFile='src/monthly-production.css';
+if(fs.existsSync(cssFile)){
+ let css=fs.readFileSync(cssFile,'utf8');
+ if(!css.includes('monthly-lock-v1'))css+="\n/* monthly-lock-v1 */\n.monthly-table-actions button:disabled{opacity:.42!important;cursor:not-allowed!important}.monthly-table-actions button:disabled:hover{transform:none!important}\n";
+ fs.writeFileSync(cssFile,css);
+}
+fs.writeFileSync(file,source);
+console.log('Monthly Plan lock state is declared before use; Daily Plan allocation lock checks retained.');
