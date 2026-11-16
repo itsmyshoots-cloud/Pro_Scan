@@ -23,45 +23,7 @@ changed=true;
 const resetHandler="const resetMonthlyPlanEditForm=()=>{const plan=monthlyPlans.find(row=>row.id===monthlyEditingId);if(!plan)return;setMonthlyForm({plan_month:String(plan.plan_month||'').slice(0,7),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',mrp:String(plan.mrp??'')});setMonthlyRows([]);setMonthlyFile('');setMonthlyMessage('Edit form reset. The saved Monthly Plan and existing serial pool are unchanged. You can now choose a different PDF.');};";
 if(!source.includes('const resetMonthlyPlanEditForm=')){source=source.replace(loaderAnchor,resetHandler+'\n'+loaderAnchor);changed=true;}
 if(source.includes("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>")){source=source.replace("onClick={cancelMonthlyPlanEdit}>Cancel edit</button>","onClick={resetMonthlyPlanEditForm}>Reset edit form</button><button type='button' disabled={monthlyBusy} onClick={cancelMonthlyPlanEdit}>Cancel edit</button>");changed=true;}
-const saveToken=source.indexOf('saveMonthlyPlan');
-const deleteToken=source.indexOf('deleteMonthlyPlan',saveToken);
-const saveStart=saveToken<0?-1:source.lastIndexOf('const ',saveToken);
-const saveEnd=deleteToken<0?-1:source.lastIndexOf('const ',deleteToken);
-if(saveStart<0||saveEnd<0)throw new Error('Monthly Plan save handler boundaries not found.');
-const saveHandler=String.raw`const saveMonthlyPlan=async()=>{
- const editingId=monthlyEditingId,current=monthlyPlans.find(plan=>plan.id===editingId);
- if(!editingId||!current){setMonthlyMessage('Select a Monthly Plan to edit.');return;}
- const month=String(monthlyForm.plan_month||'').trim(),brand=monthlyForm.brand.trim(),product=monthlyForm.product_name.trim(),model=monthlyForm.model.trim(),mrp=Number(monthlyForm.mrp);
- if(!/^\\d{4}-\\d{2}$/.test(month)){setMonthlyMessage('Select a valid production month.');return;}
- if(!brand||!product||!model){setMonthlyMessage('Enter Brand, Product and Model.');return;}
- if(!Number.isFinite(mrp)||mrp<0){setMonthlyMessage('Enter a valid MRP.');return;}
- setMonthlyBusy(true);setMonthlyMessage('Saving Monthly Plan…');
- try{
-  const allocated=await getMonthlyPlanDailyAllocationCount(editingId);
-  if(allocated>0)throw new Error('Cannot edit: '+allocated.toLocaleString()+' serial(s) are allocated to non-cancelled Daily Plans. Cancel those plans first.');
-  const {data:updated,error:updateError}=await supabase.from('monthly_production_plans').update({plan_month:month+'-01',brand,product_name:product,model,mrp}).eq('id',editingId).select('id').maybeSingle();
-  if(updateError)throw new Error('Plan update failed: '+updateError.message);
-  if(!updated?.id)throw new Error('The database did not update this Monthly Plan. Confirm that your signed-in Pro_Scan role is Planner or Super Admin.');
-  let added=0;
-  if(monthlyRows.length){
-   const {data:last,error:lastError}=await supabase.from('monthly_plan_serials').select('sequence_no').eq('monthly_plan_id',editingId).order('sequence_no',{ascending:false}).limit(1).maybeSingle();
-   if(lastError)throw new Error('Plan details saved, but sequence lookup failed: '+lastError.message);
-   const first=Number(last?.sequence_no||0)+1;
-   const payload=monthlyRows.map((row,index)=>({monthly_plan_id:editingId,label_number:String(row.label_number).trim(),serial_number:String(row.serial_number).trim(),sequence_no:first+index}));
-   for(let offset=0;offset<payload.length;offset+=250){
-    const {error}=await supabase.from('monthly_plan_serials').insert(payload.slice(offset,offset+250));
-    if(error)throw new Error('Plan details saved, but serial batch '+(Math.floor(offset/250)+1)+' failed: '+error.message);
-   }
-   added=payload.length;
-  }
-  await loadMonthlyPlans();setMonthlyEditingId('');setMonthlyRows([]);setMonthlyFile('');
-  setMonthlyMessage('Monthly Plan updated successfully. '+added.toLocaleString()+' additional serial-label pairs saved.');
- }catch(error){setMonthlyMessage(error?.message||'Could not save Monthly Plan.');}
- finally{setMonthlyBusy(false);}
-};`;
-source=source.slice(0,saveStart)+saveHandler+source.slice(saveEnd);
-source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");
-const qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
+// Save and delete handlers are maintained in add-monthly-production-plan.mjs; do not re-detect/rewrite them here.\nconst qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
 const newQty="{monthlyEditingId?<div className='monthly-import-count monthly-pool-stats'><div><span>Current available</span><strong>{Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated).toLocaleString()}</strong></div><div><span>New pool ready</span><strong>{monthlyRows.length.toLocaleString()}</strong></div><div><span>Final available</span><strong>{(Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated)+monthlyRows.length).toLocaleString()}</strong></div></div>:<div className='monthly-import-count monthly-pool-create-count'><span>Final quantity</span><strong>{monthlyRows.length.toLocaleString()}</strong></div>}";
 if(qtyMarkupPattern.test(source)){source=source.replace(qtyMarkupPattern,newQty);changed=true;}
 else if(!source.includes('monthly-pool-stats'))console.log('Monthly quantity card was already transformed by the earlier layout stage; keeping its existing markup.');
