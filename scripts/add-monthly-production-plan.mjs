@@ -68,13 +68,13 @@ const deleteMonthlyPlan=async plan=>{
   if(!window.confirm('Remove Monthly Plan '+plan.brand+' · '+plan.product_name+' · '+plan.model+'? This permanently removes its unused serial pool.'))return;
   setMonthlyBusy(true);setMonthlyMessage('Checking Monthly Plan allocations…');
   try{
-    const {count:allocatedCount,error:allocationError}=await supabase.from('production_plans').select('id',{count:'exact',head:true}).eq('monthly_plan_id',plan.id).neq('status','cancelled');
-    if(allocationError)throw new Error(allocationError.message);
-    if(Number(allocatedCount||0)>0)throw new Error('This Monthly Plan cannot be removed because '+Number(allocatedCount).toLocaleString()+' serials are already allocated to Daily Plans. Clear those allocations first.');
-    const {error:poolError}=await supabase.from('monthly_plan_serials').delete().eq('monthly_plan_id',plan.id);
-    if(poolError)throw new Error('Could not remove the unused serial pool: '+poolError.message);
-    const {error:planError}=await supabase.from('monthly_production_plans').delete().eq('id',plan.id);
-    if(planError)throw new Error('Serial pool removed, but the Monthly Plan record could not be removed: '+planError.message);
+    const {count:dailyPlanCount,error:allocationError}=await supabase.from('production_plans').select('id',{count:'exact',head:true}).eq('monthly_plan_id',plan.id);
+    if(allocationError)throw new Error('Could not check linked Daily Plans: '+allocationError.message);
+    if(Number(dailyPlanCount||0)>0)throw new Error('This Monthly Plan cannot be removed because it is linked to '+Number(dailyPlanCount).toLocaleString()+' Daily Plan(s), including cancelled plans. Remove or unlink those Daily Plans first.');
+    // monthly_plan_serials has ON DELETE CASCADE; deleting the parent removes its unused pool atomically.
+    const {error:planError,count:deletedCount}=await supabase.from('monthly_production_plans').delete({count:'exact'}).eq('id',plan.id);
+    if(planError)throw new Error('Could not remove the Monthly Plan: '+planError.message);
+    if(deletedCount===0)throw new Error('The Monthly Plan was not deleted. Check your planner permissions and try again.');
     if(monthlyEditingId===plan.id)cancelMonthlyPlanEdit();
     await loadMonthlyPlans();
     setMonthlyMessage('Monthly Plan and its unused serial pool were removed.');
