@@ -60,26 +60,6 @@ const saveHandler=String.raw`const saveMonthlyPlan=async()=>{
  finally{setMonthlyBusy(false);}
 };`;
 source=source.slice(0,saveStart)+saveHandler+source.slice(saveEnd);
-const deleteStart=source.indexOf('const deleteMonthlyPlan=',saveStart);
-const deleteEnd=source.indexOf('const navAnchor=',deleteStart);
-if(deleteStart<0||deleteEnd<0)throw new Error('Monthly Plan delete handler boundaries not found.');
-const deleteHandler=String.raw`const deleteMonthlyPlan=async plan=>{
- if(!plan||monthlyBusy)return;
- if(!window.confirm('Remove Monthly Plan '+plan.brand+' · '+plan.product_name+' · '+plan.model+'? The unused monthly serial pool will also be deleted.'))return;
- setMonthlyBusy(true);setMonthlyMessage('Checking Daily Plan allocations…');
- try{
-  const allocated=await getMonthlyPlanDailyAllocationCount(plan.id);
-  if(allocated>0)throw new Error('Cannot delete this plan: '+allocated.toLocaleString()+' serial(s) are still allocated to non-cancelled Daily Plans.');
-  const {data:deleted,error,count}=await supabase.from('monthly_production_plans').delete({count:'exact'}).eq('id',plan.id).select('id');
-  if(error)throw new Error('Delete failed: '+error.message);
-  if(!deleted?.length||count===0)throw new Error('The database did not delete this plan. Your signed-in Pro_Scan role must be Planner or Super Admin.');
-  if(monthlyEditingId===plan.id)cancelMonthlyPlanEdit();
-  setMonthlySelectedId('');await loadMonthlyPlans();
-  setMonthlyMessage('Monthly Plan deleted successfully. Its unused serial pool was removed.');
- }catch(error){setMonthlyMessage(error?.message||'Could not delete Monthly Plan.');}
- finally{setMonthlyBusy(false);}
-};`;
-source=source.slice(0,deleteStart)+deleteHandler+source.slice(deleteEnd);
 source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");
 const qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
 const newQty="{monthlyEditingId?<div className='monthly-import-count monthly-pool-stats'><div><span>Current available</span><strong>{Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated).toLocaleString()}</strong></div><div><span>New pool ready</span><strong>{monthlyRows.length.toLocaleString()}</strong></div><div><span>Final available</span><strong>{(Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated)+monthlyRows.length).toLocaleString()}</strong></div></div>:<div className='monthly-import-count monthly-pool-create-count'><span>Final quantity</span><strong>{monthlyRows.length.toLocaleString()}</strong></div>}";
