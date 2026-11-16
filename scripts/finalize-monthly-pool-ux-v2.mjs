@@ -2,8 +2,11 @@ import fs from 'fs';
 const file='src/App.jsx';
 let source=fs.readFileSync(file,'utf8');
 let changed=false;
-const stateAnchor=" const [monthlyEditingId,setMonthlyEditingId]=useState('');
- useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);";
+const stateAnchor=" const [monthlyEditingId,setMonthlyEditingId]=useState('');";
+if(source.includes(stateAnchor)&&!source.includes("setTimeout(()=>setMonthlyMessage(''),4000)")){
+ source=source.replace(stateAnchor,stateAnchor+"\\n useEffect(()=>{if(!monthlyMessage)return;const timer=setTimeout(()=>setMonthlyMessage(''),4000);return ()=>clearTimeout(timer);},[monthlyMessage]);");
+ changed=true;
+}
 if(source.includes(stateAnchor)&&!source.includes('monthlyPoolStats')){
  source=source.replace(stateAnchor,stateAnchor+" const [monthlyPoolStats,setMonthlyPoolStats]=useState({total:0,allocated:0});");
  changed=true;
