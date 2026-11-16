@@ -63,17 +63,18 @@ const saveMonthlyPlan=async()=>{
 };
 const deleteMonthlyPlan=async plan=>{
   if(!plan||monthlyBusy)return;
-  const confirmed=window.confirm('Remove Monthly Plan '+plan.brand+' · '+plan.product_name+' · '+plan.model+'? This permanently deletes the Monthly Plan and its unused serial pool.');
-  if(!confirmed)return;
-  setMonthlyBusy(true);setMonthlyMessage('Removing Monthly Plan…');
+  if(!window.confirm('Remove Monthly Plan '+plan.brand+' · '+plan.product_name+' · '+plan.model+'? This permanently deletes its unused serial pool.'))return;
+  setMonthlyBusy(true);setMonthlyMessage('Checking Daily Plan allocations…');
   try{
-    const {data,error}=await supabase.rpc('delete_monthly_production_plan',{p_plan_id:plan.id});
-    if(error)throw new Error(error.message||'Database rejected the Monthly Plan deletion.');
-    if(data!==true)throw new Error('The database did not confirm deletion. Refresh and try again.');
+    const allocatedCount=await getMonthlyPlanDailyAllocationCount(plan.id);
+    if(allocatedCount>0)throw new Error('This Monthly Plan cannot be removed because '+allocatedCount.toLocaleString()+' serial(s) are allocated to Daily Plans.');
+    const {error:planError,count:deletedCount}=await supabase.from('monthly_production_plans').delete({count:'exact'}).eq('id',plan.id);
+    if(planError)throw new Error('Could not remove the Monthly Plan: '+planError.message);
+    if(deletedCount===0)throw new Error('The Monthly Plan was not deleted. Your account may not have Planner/Super Admin permission.');
     if(monthlyEditingId===plan.id)cancelMonthlyPlanEdit();
     setMonthlySelectedId('');
     await loadMonthlyPlans();
-    setMonthlyMessage('Monthly Plan '+plan.model+' was successfully removed.');
+    setMonthlyMessage('Monthly Plan and its unused serial pool were successfully removed.');
   }catch(error){setMonthlyMessage(error?.message||'Could not remove this Monthly Plan.');}
   finally{setMonthlyBusy(false);}
 };
