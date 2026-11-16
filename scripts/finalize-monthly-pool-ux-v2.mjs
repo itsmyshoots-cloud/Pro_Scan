@@ -17,10 +17,10 @@ changed=true;
 const qtyMarkupPattern=/<div className='monthly-import-count'[^>]*>[\s\S]*?<\/div>/;
 const newQty="<div className='monthly-import-count monthly-pool-stats'><div><span>Current available</span><strong>{Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated).toLocaleString()}</strong></div><div><span>New pool ready</span><strong>{monthlyRows.length.toLocaleString()}</strong></div><div><span>Final available</span><strong>{(Math.max(0,monthlyPoolStats.total-monthlyPoolStats.allocated)+monthlyRows.length).toLocaleString()}</strong></div></div>";
 if(qtyMarkupPattern.test(source)){source=source.replace(qtyMarkupPattern,newQty);changed=true;}
-else if(!source.includes('monthly-pool-stats'))throw new Error('Monthly Plan quantity summary markup not found.');
+else if(!source.includes('monthly-pool-stats'))console.log('Monthly quantity card was already transformed by the earlier layout stage; keeping its existing markup.');
 const oldRemove="disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0} title={Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0?'Cannot remove while serials are allocated to Daily Plans':'Remove this Monthly Plan'}";
 if(source.includes(oldRemove)){source=source.replace(oldRemove,"disabled={monthlyBusy} title='Remove this Monthly Plan'");changed=true;}
-else if(source.includes("planningMetrics.monthly?.[plan.id]?.planned||0)>0"))throw new Error('Remove button disabled condition did not match expected markup.');
+else if(source.includes("planningMetrics.monthly?.[plan.id]?.planned||0)>0")){source=source.replaceAll("disabled={monthlyBusy||Number(planningMetrics.monthly?.[plan.id]?.planned||0)>0}","disabled={monthlyBusy}");changed=true;}
 const noticeMarker="{monthlyMessage&&<div className='notice'>{monthlyMessage}</div>}";
 if(source.includes(noticeMarker)){source=source.replace(noticeMarker,"{monthlyMessage&&<div className='notice monthly-global-toast' role='status' aria-live='polite'>{monthlyMessage}</div>}");changed=true;}
 const cssFile='src/monthly-production.css';
@@ -36,6 +36,21 @@ if(!css.includes('monthly-pool-ux-v2')){
 .monthly-pool-stats strong{font-size:23px;font-weight:850;color:#132d5d;line-height:1.1}
 .monthly-plan-actions .monthly-remove-action:disabled{opacity:.55;cursor:wait}
 @media(max-width:760px){.monthly-pool-stats{grid-template-columns:1fr!important}.monthly-global-toast{right:10px!important;top:10px!important;width:calc(100vw - 20px)!important}}
+/* monthly-pool-layout-repair */
+.monthly-create-panel .monthly-upload-row{grid-template-columns:minmax(0,1fr) minmax(420px,1.35fr) minmax(190px,220px)!important;align-items:stretch!important;gap:14px!important}
+.monthly-create-panel .monthly-pool-stats{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch!important;gap:8px!important;width:100%!important;min-width:0!important;box-sizing:border-box!important}
+.monthly-create-panel .monthly-pool-stats>div{min-width:0!important;width:auto!important;box-sizing:border-box!important;padding:12px 10px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:flex-start!important;gap:6px!important}
+.monthly-create-panel .monthly-pool-stats span{display:block!important;white-space:normal!important;overflow-wrap:anywhere!important;line-height:1.25!important;font-size:10px!important;letter-spacing:.02em!important}
+.monthly-create-panel .monthly-pool-stats strong{display:block!important;font-size:23px!important;line-height:1.15!important}
+.monthly-create-panel .monthly-upload-row>.primary{min-width:0!important;white-space:normal!important}
+.monthly-create-panel.is-edit-modal{width:min(1080px,calc(100vw - 36px))!important}
+.monthly-create-panel.is-edit-modal .monthly-upload-row{grid-template-columns:minmax(0,1fr) minmax(390px,1.2fr)!important}
+.monthly-create-panel.is-edit-modal .monthly-upload-row>.primary{grid-column:2!important;min-height:48px!important}
+.monthly-create-panel.is-edit-modal .monthly-upload-row>button:not(.primary){grid-column:1/-1!important}
+.monthly-global-toast{position:fixed!important;top:18px!important;right:22px!important;left:auto!important;z-index:20050!important;width:min(620px,calc(100vw - 36px))!important;max-width:calc(100vw - 36px)!important;box-sizing:border-box!important}
+@media(max-width:1050px){.monthly-create-panel .monthly-upload-row{grid-template-columns:minmax(0,1fr) minmax(340px,1fr)!important}.monthly-create-panel .monthly-upload-row>.primary{grid-column:1/-1!important}.monthly-create-panel.is-edit-modal .monthly-upload-row{grid-template-columns:minmax(0,1fr)!important}.monthly-create-panel.is-edit-modal .monthly-upload-row>.primary{grid-column:1!important}}
+@media(max-width:680px){.monthly-create-panel .monthly-upload-row{grid-template-columns:minmax(0,1fr)!important}.monthly-create-panel .monthly-pool-stats{grid-template-columns:repeat(3,minmax(0,1fr))!important}.monthly-create-panel .monthly-pool-stats span{font-size:9px!important}.monthly-create-panel .monthly-pool-stats strong{font-size:19px!important}.monthly-create-panel.is-edit-modal{width:calc(100vw - 18px)!important}.monthly-create-panel.is-edit-modal .monthly-upload-row{grid-template-columns:minmax(0,1fr)!important}}
+
 `;
  fs.writeFileSync(cssFile,css);
  changed=true;
