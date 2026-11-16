@@ -12,6 +12,14 @@ if(!stateDeclaration.test(source)){
 }
 
 const loaderAnchor=" const loadMonthlyPlans=async()=>{";
+// Define a uniquely named edit-reset callback in the final prebuild pass.
+const resetMarker='const resetMonthlyPlanEditFromRuntimeFix=';
+if(!source.includes(resetMarker)){
+ const resetHelper=" const resetMonthlyPlanEditFromRuntimeFix=()=>{setMonthlyEditingId('');setMonthlyRows([]);setMonthlyFile('');setMonthlyForm({plan_month:new Date().toISOString().slice(0,7),brand:'',product_name:'',model:'',mrp:''});setMonthlyMessage('Monthly Plan editing cancelled.');};\n";
+ source=source.replace(loaderAnchor,resetHelper+loaderAnchor);
+ source=source.replaceAll('cancelMonthlyPlanEdit','resetMonthlyPlanEditFromRuntimeFix');
+}
+
 if(!source.includes(loaderAnchor))throw new Error('Monthly loader anchor not found.');
 if(!source.includes('const refreshMonthlyPlanLocks=async()=>')){
  const helper=" const refreshMonthlyPlanLocks=async()=>{try{const poolRows=[];for(let from=0;;from+=500){const {data,error}=await supabase.from('monthly_plan_serials').select('monthly_plan_id,serial_number').not('serial_number','is',null).range(from,from+499);if(error)throw error;poolRows.push(...(data||[]));if(!data||data.length<500)break;}const usedSerials=new Set();for(let from=0;;from+=500){const {data,error}=await supabase.from('plan_serials').select('serial_number').not('serial_number','is',null).range(from,from+499);if(error)throw error;for(const row of data||[]){const key=String(row.serial_number||'').trim().toUpperCase();if(key)usedSerials.add(key);}if(!data||data.length<500)break;}const locked=new Set();for(const row of poolRows){const key=String(row.serial_number||'').trim().toUpperCase();if(key&&usedSerials.has(key)&&row.monthly_plan_id)locked.add(String(row.monthly_plan_id));}setMonthlyLockedIds(locked);}catch(error){setMonthlyMessage('Could not check Monthly Plan locks: '+(error?.message||String(error)));}};\n useEffect(()=>{void refreshMonthlyPlanLocks();},[monthlyPlans,plans,view]);\n";
