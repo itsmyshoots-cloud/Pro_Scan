@@ -102,13 +102,29 @@ async function parseSupplierPdf(file,onProgress){
  const pdf=await pdfjsModule.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
  const pageCount=pdf.numPages,labels=[],serials=[];
  try{
-  for(let pageNo=1;pageNo<=pageCount;pageNo++){
-   const page=await pdf.getPage(pageNo),content=await page.getTextContent();
-   const text=content.items.map(item=>item.str||'').join(' ');
-   labels.push(...[...text.matchAll(/\bP-\d+\b/gi)].map(m=>m[0].toUpperCase()));
-   serials.push(...[...text.matchAll(/\bGM\d+\b/gi)].map(m=>m[0].toUpperCase()));
-   page.cleanup();
-   if(pageNo%50===0){onProgress('Reading PDF page '+pageNo.toLocaleString()+' of '+pageCount.toLocaleString()+'…');await new Promise(resolve=>setTimeout(resolve,0));}
+  // Process a small, bounded group of pages concurrently. This avoids the
+  // long sequential tail on large supplier PDFs without loading the whole
+  // document's text into memory at once. Results are merged in page order.
+  const batchSize=4;
+  for(let startPage=1;startPage<=pageCount;startPage+=batchSize){
+   const endPage=Math.min(startPage+batchSize-1,pageCount);
+   const pageResults=await Promise.all(Array.from({length:endPage-startPage+1},async(_,index)=>{
+    const page=await pdf.getPage(startPage+index);
+    try{
+     const content=await page.getTextContent();
+     const text=content.items.map(item=>item.str||'').join(' ');
+     return {
+      labels:[...text.matchAll(/\bP-\d+\b/gi)].map(m=>m[0].toUpperCase()),
+      serials:[...text.matchAll(/\bGM\d+\b/gi)].map(m=>m[0].toUpperCase())
+     };
+    }finally{page.cleanup();}
+   }));
+   for(const result of pageResults){labels.push(...result.labels);serials.push(...result.serials);}
+   const completed=endPage;
+   if(completed%20===0||completed===pageCount){
+    onProgress('Reading PDF page '+completed.toLocaleString()+' of '+pageCount.toLocaleString()+'…');
+    await new Promise(resolve=>setTimeout(resolve,0));
+   }
   }
  }finally{await pdf.destroy();}
  if(labels.length!==serials.length)throw new Error('PDF extraction found '+labels.length+' labels and '+serials.length+' serials. The PDF may be incomplete.');
