@@ -8,7 +8,7 @@ s=s.replace("const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number
 
 // Track whether the editor was opened from the Monthly Plan-backed Daily Plan library.
 if(!s.includes("const [editingPlanKind,setEditingPlanKind]=useState('standard');")){
- s=s.replace("const [editingPlanId,setEditingPlanId]=useState('');","const [editingPlanId,setEditingPlanId]=useState(''); const [editingPlanKind,setEditingPlanKind]=useState('standard');");
+ s=s.replace("const [editingPlanId,setEditingPlanId]=useState(''); const [dailyPlanDetailId,setDailyPlanDetailId]=useState('');","const [editingPlanId,setEditingPlanId]=useState(''); const [editingPlanKind,setEditingPlanKind]=useState('standard');");
 }
 s=s.replace("setEditingPlanId('');setForm({production_date:localDateKey(new Date())","setEditingPlanId('');setEditingPlanKind('standard');setForm({production_date:localDateKey(new Date())");
 
