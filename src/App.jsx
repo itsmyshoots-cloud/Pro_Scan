@@ -42,6 +42,18 @@ function getPlanShiftWindow(plan){
  return {start:first[0]*60+first[1],end:parts[0]*60+parts[1]+60};
 }
 
+// Module-level fallback used by Manage Production details and carry-forward views.
+function planHourlyRate(plan){
+ const rows=Array.isArray(plan?.hourly_targets)?plan.hourly_targets:[];
+ const configured=rows.find(row=>Number(row?.planned_qty||0)>0);
+ if(configured)return Math.max(0,Math.floor(Number(configured.planned_qty)||0));
+ const start=String(plan?.shift_start||'09:00').slice(0,5).split(':').map(Number);
+ const end=String(plan?.shift_end||'18:00').slice(0,5).split(':').map(Number);
+ const minutes=start.length===2&&end.length===2&&start.every(Number.isFinite)&&end.every(Number.isFinite)?(end[0]*60+end[1])-(start[0]*60+start[1]):0;
+ const hours=Math.max(1,Math.floor(minutes/60)||rows.length||1);
+ const capacity=Number(plan?.shift_planned_qty??plan?.planned_qty??0);
+ return Math.max(0,Math.floor(capacity/hours));
+}
 function minutesToClock(totalMinutes){const minute=((Number(totalMinutes)||0)%(24*60)+24*60)%(24*60);return String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');}
 function planShiftLabel(plan){const shift=getPlanShiftWindow(plan);return shift?formatClock12(minutesToClock(shift.start))+' – '+formatClock12(minutesToClock(shift.end)):'Shift not set';}
 function distributeHourlyTargetsEvenly(targets,total){
