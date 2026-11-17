@@ -12,9 +12,9 @@ export default function ProductionRejections({plan,operatorName='Operator',planS
  const [serial,setSerial]=useState(''),[quantity,setQuantity]=useState('1'),[reason,setReason]=useState(reasons[0]),[remarks,setRemarks]=useState('');
  const [busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[error,setError]=useState('');
  const [resolveId,setResolveId]=useState(''),[resolution,setResolution]=useState('accepted'),[resolutionRemarks,setResolutionRemarks]=useState('');
- const accepted=planSerials.filter(r=>r.status==='scanned').length;
+ const accepted=planSerials.filter(r=>r.status==='scanned').length+records.filter(r=>r.rejection_type==='quantity'&&r.status==='rework_accepted').reduce((n,r)=>n+Number(r.quantity||0),0);
  const rejectedSerials=planSerials.filter(r=>r.status==='rejected').length;
- const qtyRejected=records.filter(r=>r.rejection_type==='quantity'&&r.status!=='closed').reduce((n,r)=>n+Number(r.quantity||0),0);
+ const qtyRejected=records.filter(r=>r.rejection_type==='quantity'&&!['closed','rework_accepted'].includes(r.status)).reduce((n,r)=>n+Number(r.quantity||0),0);
  const rejected=rejectedSerials+qtyRejected;
  const pending=Math.max(0,Number(plan?.planned_qty||0)-accepted-rejected);
  const load=async()=>{
@@ -43,7 +43,7 @@ export default function ProductionRejections({plan,operatorName='Operator',planS
     const {data:rej,error:rejError}=await supabase.from('production_rejections').insert({plan_id:plan.id,rejection_type:'serial',plan_serial_id:row.id,serial_number:row.serial_number,quantity:1,reason,remarks:remarks.trim()||null,recorded_by:operatorName,status:'rework_pending'}).select().single();
     if(rejError)throw rejError;
     const {data:changed,error:updateError}=await supabase.from('plan_serials').update({status:'rejected',scanned_at:null,scanned_by:null}).eq('id',row.id).in('status',['pending','scanned']).select('id').maybeSingle();
-    if(updateError||!changed){await supabase.from('production_rejections').delete().eq('id',rej.id);throw updateError||new Error('Serial status changed concurrently. Refresh and retry.');}
+    if(updateError||!changed){await supabase.from('production_rejections').update({status:'closed',resolution_remarks:'Auto-closed because the serial status update did not complete.'}).eq('id',rej.id);throw updateError||new Error('Serial status changed concurrently. Refresh and retry.');}
     await supabase.from('production_rejection_events').insert({rejection_id:rej.id,event_type:'rework_started',remarks:'Marked rejected; awaiting rework',performed_by:operatorName});
     setSerial('');setNotice('Serial '+row.serial_number+' recorded as rejected and excluded from accepted scans.');
    }else{
@@ -69,12 +69,12 @@ export default function ProductionRejections({plan,operatorName='Operator',planS
     const {data:updated,error:updateError}=await supabase.from('plan_serials').update({status:nextStatus,scanned_at:resolution==='accepted'?new Date().toISOString():null,scanned_by:resolution==='accepted'?operatorName:null}).eq('id',serialRow.id).eq('status','rejected').select('id').maybeSingle();
     if(updateError||!updated)throw updateError||new Error('Serial status changed. Refresh and retry.');
    }
-   const next=resolution==='accepted'?'rework_accepted':'rework_rejected';
+   const next=resolution==='accepted'?'rework_accepted':'rework_pending';
    const {error:updateError}=await supabase.from('production_rejections').update({status:next,resolved_at:new Date().toISOString(),resolved_by:operatorName,resolution_remarks:resolutionRemarks.trim()||null}).eq('id',row.id).eq('status','rework_pending');
    if(updateError)throw updateError;
    const {error:eventError}=await supabase.from('production_rejection_events').insert({rejection_id:row.id,event_type:resolution==='accepted'?'reinspection_accepted':'reinspection_rejected',remarks:resolutionRemarks.trim()||null,performed_by:operatorName});
    if(eventError)throw eventError;
-   setResolveId('');setResolutionRemarks('');setNotice(resolution==='accepted'?'Reinspection passed. Unit moved into accepted production.':'Reinspection failed. Unit remains rejected and is available for another rework cycle.');
+   setResolveId('');setResolutionRemarks('');setNotice(resolution==='accepted'?'Reinspection passed. Unit moved into accepted production.':'Reinspection failed. Unit remains in the rework queue for another repair and reinspection cycle.');
    await load();await onRefresh?.();onChanged?.();
   }catch(e){setError(e.message||'Could not save reinspection.');}
   finally{setBusy(false);}
