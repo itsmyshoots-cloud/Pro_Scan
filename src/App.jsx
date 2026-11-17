@@ -679,6 +679,14 @@ export default function App({user}){
     return;
    }
    if(data.status==='rejected'){setMessage('REJECTED SERIAL: '+data.serial_number+' · Send this unit for rework and reinspection.');return;}
+   const [quantityRejectionsResult,serialStatusResult]=await Promise.all([
+    supabase.from('production_rejections').select('quantity,status').eq('plan_id',selectedPlan.id).eq('rejection_type','quantity').neq('status','closed'),
+    supabase.from('plan_serials').select('id,status').eq('plan_id',selectedPlan.id).in('status',['scanned','rejected'])
+   ]);
+   if(quantityRejectionsResult.error||serialStatusResult.error){setMessage('Could not verify remaining production quantity. Scan paused; refresh and retry.');return;}
+   const quantityAccounted=(quantityRejectionsResult.data||[]).reduce((sum,row)=>sum+Number(row.quantity||0),0);
+   const serialAccounted=(serialStatusResult.data||[]).length;
+   if(quantityAccounted+serialAccounted>=Number(selectedPlan.planned_qty||0)){setMessage('PLAN QUANTITY FULLY ACCOUNTED · Further scans are blocked because accepted plus rejected quantity has reached the plan target.');return;}
    if(data.status==='scanned'){await showDuplicate(data);return;}
    const scannedAt=new Date().toISOString();
    const {data:updated,error:updateError}=await supabase.from('plan_serials')
