@@ -3,6 +3,7 @@
 // V1.1 SHIFT PLANNING
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from './lib/supabase';
+import ProductionRejections from './components/ProductionRejections';
 
 const lines=['Line 1','Line 2','Line 3'];
 function createHourlyTargets(start='09:00',end='18:00',previous=[]){
@@ -403,7 +404,7 @@ export default function App({user}){
  const todayKey=localDateKey(now);
  const dashboardPlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&(p.status==='active'||p.production_date>=todayKey)).sort((a,b)=>(b.production_date||'').localeCompare(a.production_date||'')||(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)),[plans,todayKey]);
  const operatorEligiblePlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&p.production_date===todayKey).sort((a,b)=>(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)||(a.created_at||'').localeCompare(b.created_at||'')),[plans,todayKey]);
- const pendingSerials=useMemo(()=>planSerials.filter(s=>s.status!=='scanned'),[planSerials]);
+ const pendingSerials=useMemo(()=>planSerials.filter(s=>s.status==='pending'),[planSerials]);
  const scannedSerials=useMemo(()=>planSerials.filter(s=>s.status==='scanned'),[planSerials]);
  const uniqueDuplicateSerials=useMemo(()=>[...new Map(duplicateScans.map(e=>[e.serial_number,e])).values()],[duplicateScans]);
  const lastScannedRecord=useMemo(()=>scannedSerials.reduce((latest,row)=>!latest||new Date(row.scanned_at||0).getTime()>new Date(latest.scanned_at||0).getTime()?row:latest,null),[scannedSerials]);
@@ -677,6 +678,7 @@ export default function App({user}){
     void recordEvent('missing',clean).then(({error:eventError})=>{if(eventError)setMessage(current=>current===missingMessage?missingMessage+' · event log failed':current);});
     return;
    }
+   if(data.status==='rejected'){setMessage('REJECTED SERIAL: '+data.serial_number+' · Send this unit for rework and reinspection.');return;}
    if(data.status==='scanned'){await showDuplicate(data);return;}
    const scannedAt=new Date().toISOString();
    const {data:updated,error:updateError}=await supabase.from('plan_serials')
@@ -1031,6 +1033,7 @@ export default function App({user}){
    </section>
   </aside>
  </section>:<section className='operator-workstation-empty'><span className='operator-empty-icon'>⌗</span><strong>{selectedPlan?'Confirm the production assignment':'Select today’s production plan to begin'}</strong><span>The clock remains visible. Once a plan is selected, the 2D barcode scanner and production status fill this screen automatically.</span></section>}
+{selectedPlan&&!showPlanSetup&&<ProductionRejections plan={selectedPlan} operatorName={operator} planSerials={planSerials} onRefresh={async()=>{await refreshPlanMetrics(selectedPlan);await refreshMonitoring();}} onChanged={()=>broadcastProductionChange('rejection',selectedPlan.id)} />}
 </main>}
 {detailsPanel&&<div className='operator-detail-backdrop' role='presentation' onMouseDown={event=>{if(event.target===event.currentTarget){setDetailsPanel('');setDetailsSearch('');}}}><section className='operator-detail-dialog' role='dialog' aria-modal='true' aria-labelledby='operator-detail-title'>
  <header className='operator-detail-header'><div><span className='eyebrow'>PRODUCTION SERIAL DETAILS</span><h2 id='operator-detail-title'>{{planned:'Planned quantity',scanned:'Scanned quantity',remaining:'Remaining quantity',duplicates:'Duplicate scans'}[detailsPanel]}</h2><p>{selectedPlan?.production_line} · {selectedPlan?.product_name} · {planShiftLabel(selectedPlan)}</p></div><button type='button' className='operator-detail-close' aria-label='Close details' onClick={()=>{setDetailsPanel('');setDetailsSearch('');}}>×</button></header>
