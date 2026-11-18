@@ -7,8 +7,11 @@ const original=s;
 s=s.replace("const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]));","const targetByHour=new Map((previous||[]).map(row=>[String(row.hour||row.start_time||'').slice(0,5),Number(row.planned_qty||0)]));");
 
 // Track whether the editor was opened from the Monthly Plan-backed Daily Plan library.
+// Declare the editor kind immediately beside the actual editingPlanId state.
 if(!s.includes("const [editingPlanKind,setEditingPlanKind]=useState('standard');")){
- s=s.replace("const [editingPlanId,setEditingPlanId]=useState(''); const [dailyPlanDetailId,setDailyPlanDetailId]=useState('');","const [editingPlanId,setEditingPlanId]=useState(''); const [editingPlanKind,setEditingPlanKind]=useState('standard');");
+ const editorStateAnchor="const [editingPlanId,setEditingPlanId]=useState('');";
+ if(!s.includes(editorStateAnchor))throw new Error('Editing plan state declaration not found.');
+ s=s.replace(editorStateAnchor,editorStateAnchor+" const [editingPlanKind,setEditingPlanKind]=useState('standard');");
 }
 s=s.replace("setEditingPlanId('');setForm({production_date:localDateKey(new Date())","setEditingPlanId('');setEditingPlanKind('standard');setForm({production_date:localDateKey(new Date())");
 
