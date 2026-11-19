@@ -128,22 +128,31 @@ const recordsTitleOld="<h3>All created daily plans</h3><p>Daily plans are linked
 const recordsTitleNew="<h3>Daily Production Records</h3><p>One list of every daily plan, with planned output, actual scans and remaining quantity.</p>";
 source=source.replace(recordsTitleOld,recordsTitleNew);
 
-const filterAnchor=" </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>\n  {dailyPlansLoading?";
-const filterBlock=[
-" </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>",
+const recordsPanelStart=source.indexOf("<section className='panel daily-plans-list-panel'>");
+if(recordsPanelStart<0)throw new Error('Daily Production Records panel not found.');
+const recordsPanelEnd=source.indexOf("</main>}",recordsPanelStart);
+if(recordsPanelEnd<0)throw new Error('Daily Production Records page boundary not found.');
+const recordsMarkup=source.slice(recordsPanelStart,recordsPanelEnd);
+const refreshButtonIndex=recordsMarkup.indexOf("↻ Refresh</button>");
+if(refreshButtonIndex<0)throw new Error('Daily Records Refresh button not found.');
+const recordsHeaderClose=recordsMarkup.indexOf("</div>",refreshButtonIndex);
+if(recordsHeaderClose<0)throw new Error('Daily Records header close not found.');
+const filterMarkup=[
 "  <div className='daily-record-filters'>",
 "   <label>Search<input type='search' value={dailyRecordSearch} placeholder='Search product, brand or model' onChange={e=>{setDailyRecordSearch(e.target.value);setDailyRecordPage(1);}}/></label>",
 "   <label>Production date<select value={dailyRecordDate} onChange={e=>{setDailyRecordDate(e.target.value);setDailyRecordPage(1);}}><option value='all'>All dates</option>{dailyRecordDateOptions.map(date=><option key={date} value={date}>{new Date(date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</option>)}</select></label>",
 "   <label>Production line<select value={dailyRecordLine} onChange={e=>{setDailyRecordLine(e.target.value);setDailyRecordPage(1);}}><option value='all'>All lines</option>{dailyRecordLineOptions.map(line=><option key={line} value={line}>{line}</option>)}</select></label>",
 "   <label>Status<select value={dailyRecordStatus} onChange={e=>{setDailyRecordStatus(e.target.value);setDailyRecordPage(1);}}><option value='all'>All statuses</option><option value='draft'>Draft</option><option value='active'>Active</option><option value='completed'>Completed</option><option value='cancelled'>Cancelled</option></select></label>",
 "  </div>",
-"  <div className='daily-record-result-count'>{dailyRecordFilteredPlans.length.toLocaleString()} plan(s) found</div>",
-"  {dailyPlansLoading?"
+"  <div className='daily-record-result-count'>{dailyRecordFilteredPlans.length.toLocaleString()} plan(s) found</div>"
 ].join('\n');
-if(!source.includes(filterAnchor))throw new Error('Daily Records filter insertion anchor not found.');
-source=source.replace(filterAnchor,filterBlock);
+if(!recordsMarkup.includes("className='daily-record-filters'")){
+ const insertAt=recordsPanelStart+recordsHeaderClose+"</div>".length;
+ source=source.slice(0,insertAt)+"\n"+filterMarkup+source.slice(insertAt);
+}
+
 source=source.replace("dailyPlansList.length?<div className='daily-plan-table-wrap'>","dailyRecordFilteredPlans.length?<div className='daily-plan-table-wrap'>");
-if(source.includes('dailyPlansList.map(')) source=source.replace('dailyPlansList.map(','dailyRecordPageRows.map(');
+if(source.includes("dailyPlansList.map("))source=source.replace("dailyPlansList.map(","dailyRecordPageRows.map(");
 const oldAction="<td>{plan.status==='draft'?<button type='button' onClick={()=>void startEditPlan(plan)}>Edit draft</button>:<span className='muted-action'>Locked</span>}</td>";
 const newAction="<td><div className='daily-record-actions'><button type='button' onClick={()=>{setSelectedPlan(plan);setExpandedManagePlanId(plan.id);setView('manage');void refreshMonitoring();}}>Details</button>{plan.status==='draft'&&<button type='button' onClick={()=>void startEditPlan(plan)}>Edit draft</button>}</div></td>";
 if(source.includes(oldAction))source=source.replace(oldAction,newAction);
