@@ -54,7 +54,7 @@ const hero=[
 " <div className='daily-summary-card'><span>Monthly pool available</span><strong>{dailyAvailableQty.toLocaleString()}</strong><small>Unallocated units in selected Monthly Plan</small></div>",
 " <div className='daily-summary-card'><span>Already planned for date</span><strong>{dailySelectedDateMetrics.planned.toLocaleString()}</strong><small>{form.production_date||'Selected production date'}</small></div>",
 " <div className='daily-summary-card'><span>Actually produced</span><strong>{dailySelectedDateMetrics.actual.toLocaleString()}</strong><small>Successful scans on selected date</small></div>",
-" <div className='daily-summary-card'><span>Pool after this plan</span><strong>{Math.max(0,dailyAvailableQty-Number(form.planned_qty||0)).toLocaleString()}</strong><small>Estimated remaining monthly quantity</small></div>",
+" <div className='daily-summary-card'><span>Remaining production today</span><strong>{Math.max(0,dailySelectedDateMetrics.planned-dailySelectedDateMetrics.actual).toLocaleString()}</strong><small>Selected-date planned quantity minus completed scans</small></div>",
 "</section>"
 ].join('\n');
 source=source.slice(0,heroStart)+hero+source.slice(heroEnd+'</section>'.length);
