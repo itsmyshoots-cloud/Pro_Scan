@@ -54,11 +54,11 @@ const css=String.raw`
 .daily-hero p{max-width:850px;margin:0;color:#64758e;font-size:12px;line-height:1.55}
 .daily-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .daily-summary-card{padding:13px 15px;border-radius:12px}
-.daily-primary-grid{grid-template-columns:minmax(160px,.9fr) minmax(280px,1.65fr) minmax(145px,.8fr);gap:12px}
+.daily-form-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .daily-product-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
 .daily-shift-card{gap:14px;padding:17px 18px}
 .daily-shift-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
-.daily-shift-grid label,.daily-primary-grid label,.daily-notes-field{display:flex;flex-direction:column;gap:6px;color:#52627a;font-size:10px;font-weight:850}
+.daily-shift-grid label,.daily-form-grid label,.daily-notes-field{display:flex;flex-direction:column;gap:6px;color:#52627a;font-size:10px;font-weight:850}
 .daily-production-page .hourly-target-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
 .daily-production-page .hour-target-field{min-width:0;padding:11px;border-radius:10px}
 .daily-production-page .hour-target-field input{width:100%}
@@ -181,7 +181,7 @@ const css=String.raw`
  .monthly-plan-actions{grid-column:1/-1;justify-content:flex-start}
 }
 @media(max-width:1050px){
- .daily-primary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .daily-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .daily-shift-grid,.monthly-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .daily-production-page .hourly-target-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
  .report-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -201,7 +201,7 @@ const css=String.raw`
  .live-quantity-controls{width:100%;align-items:flex-start}
  .live-quantity-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
  .line-monitor-grid{grid-template-columns:1fr}
- .daily-primary-grid,.daily-shift-grid,.monthly-form-grid,.management-advanced-grid,.report-filter-grid,.rw-filter-grid,.user-admin-page .user-admin-card .grid{grid-template-columns:1fr}
+ .daily-form-grid,.daily-shift-grid,.monthly-form-grid,.management-advanced-grid,.report-filter-grid,.rw-filter-grid,.user-admin-page .user-admin-card .grid{grid-template-columns:1fr}
  .daily-summary-grid,.daily-product-summary,.daily-shift-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
  .daily-production-page .hourly-target-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .monthly-upload-row{grid-template-columns:1fr}
@@ -229,7 +229,7 @@ const css=String.raw`
 fs.writeFileSync(cssFile,css);
 if(!source.includes("import './global-ui-ux.css';"))throw new Error('Global UI stylesheet import is missing.');
 if(!source.includes('live-quantity-panel')||!source.includes('live-line-panel')||!source.includes('LIVE SCAN ACTIVITY'))throw new Error('Live View must contain product quantity, line/hourly and scan activity sections.');
-if(!source.includes("className='daily-primary-grid'")||!source.includes("className='monthly-form-grid'")||!source.includes("className='management-advanced-grid'"))throw new Error('A production form layout section is missing.');
+if(!source.includes("className='daily-form-grid'")||!source.includes("className='monthly-form-grid'")||!source.includes("className='management-advanced-grid'"))throw new Error('A production form layout section is missing.');
 if(source.includes("view==='dashboard'"))throw new Error('Legacy Dashboard route should remain removed.');
 fs.writeFileSync(appFile,source);
 console.log('Global Pro Scan UI system applied: consistent shell, ordered forms, Monthly Plan heading restored to top, enlarged Live View and responsive scanner layout.');
