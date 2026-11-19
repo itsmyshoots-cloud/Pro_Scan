@@ -29,7 +29,8 @@ const clockLabel=value=>{
 const timeInSlot=(value,slot,date)=>{
  if(!value)return false;
  const d=new Date(value);
- if(Number.isNaN(d.getTime())||dateKey(d.toISOString())!==date)return false;
+ const localKey=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+ if(Number.isNaN(d.getTime())||localKey!==date)return false;
  const parts=String(slot||'').slice(0,5).split(':').map(Number);
  if(parts.length!==2||parts.some(x=>!Number.isFinite(x)))return false;
  const minute=d.getHours()*60+d.getMinutes(),start=parts[0]*60+parts[1];
