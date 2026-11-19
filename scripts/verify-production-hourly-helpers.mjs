@@ -14,4 +14,11 @@ for (const legacyCall of ['planHours(', 'planHourlyRate(']) {
   }
 }
 
-console.log('Production hourly helper check passed: shared helpers exist and no legacy references remain.');
+if (!source.includes("Actual produced:")) {
+  throw new Error('Hourly production Details must show actual produced quantity per hour.');
+}
+if (source.includes("<div><span>Batch requirement</span>")) {
+  throw new Error('Batch Requirement metric must stay hidden in production Details.');
+}
+
+console.log('Production Details check passed: shared hourly helpers, per-hour actual output, and no Batch Requirement metric.');
