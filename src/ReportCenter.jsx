@@ -1,59 +1,217 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {supabase} from './lib/supabase';
 
-const TYPES=[['summary','Overview'],['day','Day-wise'],['plan','Plan-wise'],['hourly','Hourly'],['line','Line performance'],['product','Product / Model'],['manpower','Manpower'],['serial','Serial traceability'],['carry','Carry-forward'],['exceptions','Exceptions']];
-const NAV=[['dashboard','Dashboard'],['live','Live Monitoring'],['manage','Manage Production'],['reports','Reports']];
-const n=v=>Number(v||0); const qty=v=>n(v).toLocaleString('en-IN');
-const dateKey=v=>String(v||'').slice(0,10);
-const clock=v=>{const p=String(v||'').slice(0,5).split(':').map(Number);if(p.length!==2||p.some(x=>!Number.isFinite(x)))return String(v||'—');const h=p[0],m=p[1];return `${String(h%12||12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`};
-const hoursOf=p=>{if(p?.shift_start&&p?.shift_end){const a=p.shift_start.slice(0,5).split(':').map(Number),b=p.shift_end.slice(0,5).split(':').map(Number);if(a.length===2&&b.length===2){const d=b[0]*60+b[1]-(a[0]*60+a[1]);if(d>0)return d/60;}}return Array.isArray(p?.hourly_targets)?p.hourly_targets.length:0;};
-const allocation=p=>Array.isArray(p?.hourly_targets)?p.hourly_targets.reduce((s,r)=>s+n(r.planned_qty),0):0;
-const capacity=p=>n(p?.shift_planned_qty)||Math.max(0,n(p?.hourly_targets?.[0]?.planned_qty)*hoursOf(p));
-const rate=p=>n(p?.hourly_targets?.[0]?.planned_qty)||(hoursOf(p)?Math.floor(capacity(p)/hoursOf(p)):0);
-const pct=(a,b)=>b?Math.round(a/b*1000)/10:0;
-const csvCell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-function download(name,headers,rows){const text='\uFEFF'+[headers,...rows].map(r=>r.map(csvCell).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+const REPORT_TYPES=[
+ ['overall','Overall report'],
+ ['day','Day-wise'],
+ ['product','Product-wise'],
+ ['brand','Brand-wise'],
+ ['month','Month-wise'],
+ ['hour','Hour-wise']
+];
+const n=value=>Number(value||0);
+const qty=value=>n(value).toLocaleString('en-IN');
+const dateKey=value=>String(value||'').slice(0,10);
+const localToday=()=>{
+ const d=new Date();
+ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+};
+const monthStart=()=>{
+ const d=new Date();
+ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
+};
+const clockLabel=value=>{
+ const parts=String(value||'').slice(0,5).split(':').map(Number);
+ if(parts.length!==2||parts.some(x=>!Number.isFinite(x)))return String(value||'—');
+ const h=parts[0],m=parts[1];
+ return String(h%12||12).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+(h>=12?'PM':'AM');
+};
+const timeInSlot=(value,slot,date)=>{
+ if(!value)return false;
+ const d=new Date(value);
+ if(Number.isNaN(d.getTime())||dateKey(d.toISOString())!==date)return false;
+ const parts=String(slot||'').slice(0,5).split(':').map(Number);
+ if(parts.length!==2||parts.some(x=>!Number.isFinite(x)))return false;
+ const minute=d.getHours()*60+d.getMinutes(),start=parts[0]*60+parts[1];
+ return minute>=start&&minute<start+60;
+};
+const plannedFor=plan=>{
+ const hourly=Array.isArray(plan?.hourly_targets)?plan.hourly_targets:[];
+ const sum=hourly.reduce((total,row)=>total+n(row.planned_qty),0);
+ return sum||n(plan?.planned_qty);
+};
+const csvCell=value=>'"'+String(value??'').replace(/"/g,'""')+'"';
+const downloadCsv=(filename,headers,rows)=>{
+ const csv='\uFEFF'+[headers,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 
-export default function ReportCenter({onClose,onNavigate,embedded=false}){
- const [type,setType]=useState('summary'); const [plans,setPlans]=useState([]); const [serials,setSerials]=useState([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [advanced,setAdvanced]=useState(false);
- const [f,setF]=useState({from:'',to:'',line:'all',brand:'all',product:'all',model:'all',shift:'all',status:'all',search:''});
- useEffect(()=>{let alive=true;(async()=>{setLoading(true);setError('');const [{data:p,error:pe},{data:s,error:se}]=await Promise.all([supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(2000),supabase.from('plan_serials').select('*').limit(100000)]);if(!alive)return;if(pe||se){setError((pe||se)?.message||'Could not load production data.');setLoading(false);return;}setPlans(p||[]);setSerials(s||[]);setLoading(false);})();return()=>{alive=false};},[]);
- const serialByPlan=useMemo(()=>{const m=new Map();for(const s of serials){const a=m.get(s.plan_id)||[];a.push(s);m.set(s.plan_id,a);}return m},[serials]);
- const filtered=useMemo(()=>plans.filter(p=>{const d=dateKey(p.production_date);if(f.from&&d<f.from)return false;if(f.to&&d>f.to)return false;if(f.line!=='all'&&p.production_line!==f.line)return false;if(f.brand!=='all'&&p.brand!==f.brand)return false;if(f.product!=='all'&&p.product_name!==f.product)return false;if(f.model!=='all'&&p.model!==f.model)return false;if(f.shift!=='all'&&p.shift_name!==f.shift)return false;if(f.status!=='all'&&p.status!==f.status)return false;if(f.search){const q=f.search.toLowerCase();return [p.product_name,p.model,p.brand,p.production_line,p.id].some(x=>String(x||'').toLowerCase().includes(q));}return true}),[plans,f]);
- const roots=useMemo(()=>{const byId=new Map(plans.map(p=>[p.id,p]));const rootOf=p=>{let x=p,guard=0;while(x?.carry_forward_from_plan_id&&guard++<100){x=byId.get(x.carry_forward_from_plan_id)||x;if(!x.carry_forward_from_plan_id)break;}return x||p};return new Map(plans.map(p=>[p.id,rootOf(p)]));},[plans]);
- const rows=useMemo(()=>filtered.map(p=>({p,allocation:allocation(p),capacity:capacity(p),actual:(serialByPlan.get(p.id)||[]).filter(s=>s.status==='scanned').length})),[filtered,serialByPlan]);
- const dayRows=useMemo(()=>{const m=new Map();for(const r of rows){const k=dateKey(r.p.production_date),x=m.get(k)||{date:k,capacity:0,planned:0,actual:0,plans:0};x.capacity+=r.capacity;x.planned+=r.allocation;x.actual+=r.actual;x.plans++;m.set(k,x);}return [...m.values()].sort((a,b)=>b.date.localeCompare(a.date));},[rows]);
- const planRows=useMemo(()=>{const m=new Map();for(const r of rows){const root=roots.get(r.p.id)||r.p,k=root.id,x=m.get(k)||{root,capacity:0,planned:0,actual:0,dates:new Set(),segments:0};x.capacity+=r.capacity;x.planned+=r.allocation;x.actual+=r.actual;x.dates.add(dateKey(r.p.production_date));x.segments++;m.set(k,x);}return [...m.values()].map(x=>({...x,pending:Math.max(0,n(x.root.planned_qty)-x.actual),eff:pct(x.actual,x.planned),dates:x.dates.size}));},[rows,roots]);
- const lineRows=useMemo(()=>{const m=new Map();for(const r of rows){const k=r.p.production_line||'Unassigned',x=m.get(k)||{line:k,capacity:0,planned:0,actual:0,manpower:0};x.capacity+=r.capacity;x.planned+=r.allocation;x.actual+=r.actual;x.manpower+=n(r.p.manpower_count);m.set(k,x);}return [...m.values()].map(x=>({...x,pending:Math.max(0,x.planned-x.actual),eff:pct(x.actual,x.planned)}));},[rows]);
- const productRows=useMemo(()=>{const m=new Map();for(const r of rows){const k=(r.p.product_name||'—')+'|'+(r.p.model||'—'),x=m.get(k)||{product:r.p.product_name||'—',model:r.p.model||'—',capacity:0,planned:0,actual:0};x.capacity+=r.capacity;x.planned+=r.allocation;x.actual+=r.actual;m.set(k,x);}return [...m.values()].map(x=>({...x,pending:Math.max(0,x.planned-x.actual),eff:pct(x.actual,x.planned)}));},[rows]);
- const manpowerRows=useMemo(()=>rows.map(r=>({date:dateKey(r.p.production_date),line:r.p.production_line,product:r.p.product_name,model:r.p.model,manpower:n(r.p.manpower_count),actual:r.actual,unitsPerManpower:r.p.manpower_count?pct(r.actual,n(r.p.manpower_count)):0,rate:rate(r.p)})),[rows]);
- const hourlyRows=useMemo(()=>{const out=[];for(const r of rows){const actuals=serialByPlan.get(r.p.id)||[];for(const h of Array.isArray(r.p.hourly_targets)?r.p.hourly_targets:[]){const start=String(h.hour||'').slice(0,5);const [hh,mm]=start.split(':').map(Number);const startMin=hh*60+mm;const actual=actuals.filter(s=>s.status==='scanned'&&s.scanned_at&&dateKey(s.scanned_at)===dateKey(r.p.production_date)&&(()=>{const d=new Date(s.scanned_at);const m=d.getHours()*60+d.getMinutes();return m>=startMin&&m<startMin+60})()).length;out.push({date:dateKey(r.p.production_date),line:r.p.production_line,product:r.p.product_name,model:r.p.model,shift:r.p.shift_name,hour:clock(start),planned:n(h.planned_qty),actual,variance:actual-n(h.planned_qty),eff:pct(actual,n(h.planned_qty))});}}return out;},[rows,serialByPlan]);
- const serialRows=useMemo(()=>{const by=new Map(filtered.map(p=>[p.id,p]));return serials.filter(s=>by.has(s.plan_id)).map(s=>{const p=by.get(s.plan_id);return {serial:s.serial_number||s.serial||s.label_number||'—',label:s.label_number||'—',date:dateKey(p.production_date),time:s.scanned_at?new Date(s.scanned_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'—',line:p.production_line,shift:p.shift_name,product:p.product_name,model:p.model,status:s.status,plan:p.id.slice(0,8)}});},[serials,filtered]);
- const carryRows=useMemo(()=>planRows.map(x=>{const chain=filtered.filter(p=>(roots.get(p.id)||p).id===x.root.id).sort((a,b)=>dateKey(a.production_date).localeCompare(dateKey(b.production_date)));return {...x,chain};}),[planRows,filtered,roots]);
- const exceptionRows=useMemo(()=>hourlyRows.filter(r=>r.actual<r.planned||r.planned===0&&r.actual===0),[hourlyRows]);
- const totals=useMemo(()=>({capacity:rows.reduce((s,r)=>s+r.capacity,0),planned:rows.reduce((s,r)=>s+r.allocation,0),actual:rows.reduce((s,r)=>s+r.actual,0),plans:rows.length}),[rows]);
- const options=(key)=>['all',...new Set(plans.map(p=>p[key]).filter(Boolean))];
- const reset=()=>setF({from:'',to:'',line:'all',brand:'all',product:'all',model:'all',shift:'all',status:'all',search:''});
- const exportCurrent=()=>{if(type==='day')download('production-day-wise.csv',['Date','Capacity','Planned allocation','Actual','Pending','Efficiency','Plans'],dayRows.map(x=>[x.date,x.capacity,x.planned,x.actual,Math.max(0,x.planned-x.actual),pct(x.actual,x.planned)+'%',x.plans]));else if(type==='plan')download('production-plan-wise.csv',['Plan','Date','Product','Model','Requirement','Capacity','Allocation','Actual','Pending','Days','Efficiency'],planRows.map(x=>[x.root.id,x.root.production_date,x.root.product_name,x.root.model,x.root.planned_qty,x.capacity,x.planned,x.actual,x.pending,x.dates,x.eff+'%']));else if(type==='hourly')download('production-hourly.csv',['Date','Line','Product','Model','Shift','Hour','Planned','Actual','Variance','Efficiency'],hourlyRows.map(x=>[x.date,x.line,x.product,x.model,x.shift,x.hour,x.planned,x.actual,x.variance,x.eff+'%']));else if(type==='serial')download('serial-traceability.csv',['Serial','Label','Date','Time','Line','Shift','Product','Model','Status','Plan'],serialRows.map(x=>[x.serial,x.label,x.date,x.time,x.line,x.shift,x.product,x.model,x.status,x.plan]));else download('production-summary.csv',['Date','Line','Product','Model','Shift','Capacity','Allocation','Actual','Pending','Efficiency'],rows.map(r=>[dateKey(r.p.production_date),r.p.production_line,r.p.product_name,r.p.model,r.p.shift_name,r.capacity,r.allocation,r.actual,Math.max(0,r.allocation-r.actual),pct(r.actual,r.allocation)+'%']));};
- const table=(headers,data,empty='No data for the selected filters.')=><div className='rc-table-wrap'><table className='rc-table'><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{data.length?data:<tr><td colSpan={headers.length} className='rc-empty'>{empty}</td></tr>}</tbody></table></div>;
+export default function ReportCenter({onNavigate,embedded=true}){
+ const [reportType,setReportType]=useState('overall');
+ const [plans,setPlans]=useState([]);
+ const [serials,setSerials]=useState([]);
+ const [rejections,setRejections]=useState([]);
+ const [loading,setLoading]=useState(true);
+ const [error,setError]=useState('');
+ const [filters,setFilters]=useState({from:monthStart(),to:localToday(),brand:'all',product:'all',line:'all',shift:'all'});
+
+ const load=async()=>{
+  setLoading(true);setError('');
+  const [planResult,serialResult,rejectionResult]=await Promise.all([
+   supabase.from('production_plans').select('*').order('production_date',{ascending:false}).limit(2000),
+   supabase.from('plan_serials').select('*').limit(100000),
+   supabase.from('production_rejections').select('*').limit(100000)
+  ]);
+  const failure=planResult.error||serialResult.error||rejectionResult.error;
+  if(failure){setError(failure.message||'Could not load production reports.');setLoading(false);return;}
+  setPlans(planResult.data||[]);
+  setSerials(serialResult.data||[]);
+  setRejections(rejectionResult.data||[]);
+  setLoading(false);
+ };
+ useEffect(()=>{void load();},[]);
+
+ const brands=useMemo(()=>[...new Set(plans.map(p=>String(p.brand||'').trim()).filter(Boolean))].sort(),[plans]);
+ const products=useMemo(()=>[...new Set(plans.map(p=>String(p.product_name||'').trim()).filter(Boolean))].sort(),[plans]);
+ const lines=useMemo(()=>[...new Set(plans.map(p=>String(p.production_line||'').trim()).filter(Boolean))].sort(),[plans]);
+ const shifts=useMemo(()=>[...new Set(plans.map(p=>String(p.shift_name||'').trim()).filter(Boolean))].sort(),[plans]);
+
+ const serialByPlan=useMemo(()=>{
+  const map=new Map();
+  for(const serial of serials){const list=map.get(serial.plan_id)||[];list.push(serial);map.set(serial.plan_id,list);}
+  return map;
+ },[serials]);
+ const rejectionByPlan=useMemo(()=>{
+  const map=new Map();
+  for(const row of rejections){const list=map.get(row.plan_id)||[];list.push(row);map.set(row.plan_id,list);}
+  return map;
+ },[rejections]);
+
+ const filteredPlans=useMemo(()=>plans.filter(plan=>{
+  const date=dateKey(plan.production_date);
+  return (!filters.from||date>=filters.from)&&(!filters.to||date<=filters.to)
+   &&(filters.brand==='all'||plan.brand===filters.brand)
+   &&(filters.product==='all'||plan.product_name===filters.product)
+   &&(filters.line==='all'||plan.production_line===filters.line)
+   &&(filters.shift==='all'||plan.shift_name===filters.shift);
+ }),[plans,filters]);
+
+ const planRows=useMemo(()=>filteredPlans.map(plan=>{
+  const planSerials=serialByPlan.get(plan.id)||[];
+  const planRejections=rejectionByPlan.get(plan.id)||[];
+  const acceptedSerials=planSerials.filter(row=>row.status==='scanned').length;
+  const rejectedSerials=planSerials.filter(row=>row.status==='rejected').length;
+  const quantityAccepted=planRejections.filter(row=>row.rejection_type==='quantity'&&row.status==='rework_accepted').reduce((sum,row)=>sum+n(row.quantity),0);
+  const quantityRejected=planRejections.filter(row=>row.rejection_type==='quantity'&&!['closed','rework_accepted'].includes(row.status)).reduce((sum,row)=>sum+n(row.quantity),0);
+  const accepted=acceptedSerials+quantityAccepted;
+  const rejected=rejectedSerials+quantityRejected;
+  const actual=accepted+rejected;
+  const planned=plannedFor(plan);
+  return {plan,planned,actual,rejected,accepted,pending:Math.max(0,planned-actual),serials:planSerials,rejections:planRejections};
+ }),[filteredPlans,serialByPlan,rejectionByPlan]);
+
+ const totals=useMemo(()=>planRows.reduce((sum,row)=>{
+  sum.planned+=row.planned;sum.actual+=row.actual;sum.rejected+=row.rejected;sum.accepted+=row.accepted;sum.pending+=row.pending;
+  return sum;
+ },{planned:0,actual:0,rejected:0,accepted:0,pending:0}),[planRows]);
+
+ const groupedRows=useMemo(()=>{
+  if(reportType==='overall')return planRows.map(row=>({
+   key:row.plan.id,date:dateKey(row.plan.production_date),brand:row.plan.brand||'—',product:row.plan.product_name||'—',model:row.plan.model||'—',line:row.plan.production_line||'—',shift:row.plan.shift_name||'—',
+   planned:row.planned,actual:row.actual,rejected:row.rejected,accepted:row.accepted,pending:row.pending,status:row.plan.status||'—'
+  }));
+  const getKey=row=>{
+   if(reportType==='day')return dateKey(row.plan.production_date);
+   if(reportType==='product')return (row.plan.product_name||'—')+' · '+(row.plan.model||'—');
+   if(reportType==='brand')return row.plan.brand||'—';
+   return dateKey(row.plan.production_date).slice(0,7);
+  };
+  const map=new Map();
+  for(const row of planRows){
+   const key=getKey(row);
+   const item=map.get(key)||{key,label:key,plans:0,planned:0,actual:0,rejected:0,accepted:0,pending:0};
+   item.plans+=1;item.planned+=row.planned;item.actual+=row.actual;item.rejected+=row.rejected;item.accepted+=row.accepted;item.pending+=row.pending;
+   map.set(key,item);
+  }
+  return [...map.values()].sort((a,b)=>String(b.key).localeCompare(String(a.key)));
+ },[reportType,planRows]);
+
+ const hourlyRows=useMemo(()=>{
+  if(reportType!=='hour')return [];
+  const output=[];
+  for(const row of planRows){
+   const plan=row.plan,date=dateKey(plan.production_date);
+   const targets=Array.isArray(plan.hourly_targets)?plan.hourly_targets:[];
+   const planSerials=row.serials,planRejections=row.rejections;
+   for(const target of targets){
+    const hour=String(target.hour||'').slice(0,5);
+    const acceptedScans=planSerials.filter(s=>s.status==='scanned'&&timeInSlot(s.scanned_at,hour,date)).length;
+    const rejectedSerials=planRejections.filter(r=>r.rejection_type==='serial'&&r.status!=='rework_accepted'&&r.status!=='closed'&&timeInSlot(r.recorded_at,hour,date)).length;
+    const quantityRejected=planRejections.filter(r=>r.rejection_type==='quantity'&&!['closed','rework_accepted'].includes(r.status)&&timeInSlot(r.recorded_at,hour,date)).reduce((sum,r)=>sum+n(r.quantity),0);
+    const quantityAccepted=planRejections.filter(r=>r.rejection_type==='quantity'&&r.status==='rework_accepted'&&timeInSlot(r.resolved_at,hour,date)).reduce((sum,r)=>sum+n(r.quantity),0);
+    const accepted=acceptedScans+quantityAccepted,rejected=rejectedSerials+quantityRejected,actual=accepted+rejected,planned=n(target.planned_qty);
+    output.push({key:plan.id+'-'+hour,date,line:plan.production_line||'—',brand:plan.brand||'—',product:plan.product_name||'—',model:plan.model||'—',shift:plan.shift_name||'—',hour:clockLabel(hour),planned,actual,rejected,accepted,pending:Math.max(0,planned-actual)});
+   }
+  }
+  return output;
+ },[reportType,planRows]);
+
+ const reportRows=reportType==='hour'?hourlyRows:groupedRows;
+ const reportHeaders=reportType==='overall'
+  ?['Date','Brand','Product','Model','Line','Shift','Planned Qty','Actual Qty','Rejected Qty','Accepted Qty','Pending']
+  :reportType==='hour'
+   ?['Date','Line','Brand','Product / Model','Shift','Hour','Planned Qty','Actual Qty','Rejected Qty','Accepted Qty','Pending']
+   :[reportType==='day'?'Date':reportType==='product'?'Product / Model':reportType==='brand'?'Brand':'Month','Plans','Planned Qty','Actual Qty','Rejected Qty','Accepted Qty','Pending'];
+ const exportRows=reportType==='overall'
+  ?reportRows.map(r=>[r.date,r.brand,r.product,r.model,r.line,r.shift,r.planned,r.actual,r.rejected,r.accepted,r.pending])
+  :reportType==='hour'
+   ?reportRows.map(r=>[r.date,r.line,r.brand,r.product+' / '+r.model,r.shift,r.hour,r.planned,r.actual,r.rejected,r.accepted,r.pending])
+   :reportRows.map(r=>[r.label,r.plans,r.planned,r.actual,r.rejected,r.accepted,r.pending]);
+
+ const reset=()=>setFilters({from:monthStart(),to:localToday(),brand:'all',product:'all',line:'all',shift:'all'});
+ const setFilter=(key,value)=>setFilters(previous=>({...previous,[key]:value}));
+ const reportLabel=REPORT_TYPES.find(([id])=>id===reportType)?.[1]||'Overall report';
+
  return <div className={embedded?'rc-shell rc-embedded':'rc-shell'}>
-  {!embedded&&  <header className='rc-appbar'><div className='rc-brand'><div className='rc-brand-mark'>P</div><div><strong>PRO SCAN</strong><span>Production MIS</span></div></div><nav className='rc-main-nav'>{NAV.map(([id,label])=><button key={id} className={id==='reports'?'active':''} onClick={()=>id==='reports'?setType('summary'):onNavigate?.(id)}>{label}</button>)}</nav><div className='rc-appbar-status'><span className='rc-live-dot'></span>Live data</div></header>}
-  <main className='rc-main'>
-   <div className='rc-top'><div><span className='rc-kicker'>PRODUCTION MIS</span><h1>Reports</h1><p>Turn production activity into clear day-wise, plan-wise and serial-level decisions.</p></div><div className='rc-top-actions'><button className='rc-export' onClick={exportCurrent}>Export CSV</button></div></div>
-   <section className='rc-filter-card'><div className='rc-filter-head'><div><strong>Report filters</strong><span>{filtered.length.toLocaleString('en-IN')} production plans in view</span></div><div className='rc-filter-actions'><button className='rc-filter-more' onClick={()=>setAdvanced(v=>!v)}>{advanced?'Hide filters':'More filters'} <span>{advanced?'−':'+'}</span></button><button className='rc-reset' onClick={reset}>Reset</button></div></div><div className='rc-filter-grid rc-filter-primary'><label><span>From</span><input type='date' value={f.from} onChange={e=>setF({...f,from:e.target.value})}/></label><label><span>To</span><input type='date' value={f.to} onChange={e=>setF({...f,to:e.target.value})}/></label><label><span>Production line</span><select value={f.line} onChange={e=>setF({...f,line:e.target.value})}>{options('production_line').map(x=><option key={x} value={x}>{x==='all'?'All lines':x}</option>)}</select></label><label className='rc-search-field'><span>Search</span><input placeholder='Product, model, plan ID…' value={f.search} onChange={e=>setF({...f,search:e.target.value})}/></label></div>{advanced&&<div className='rc-filter-grid rc-filter-advanced'><label><span>Product</span><select value={f.product} onChange={e=>setF({...f,product:e.target.value})}>{options('product_name').map(x=><option key={x} value={x}>{x==='all'?'All products':x}</option>)}</select></label><label><span>Model</span><select value={f.model} onChange={e=>setF({...f,model:e.target.value})}>{options('model').map(x=><option key={x} value={x}>{x==='all'?'All models':x}</option>)}</select></label><label><span>Shift</span><select value={f.shift} onChange={e=>setF({...f,shift:e.target.value})}>{options('shift_name').map(x=><option key={x} value={x}>{x==='all'?'All shifts':x}</option>)}</select></label><label><span>Status</span><select value={f.status} onChange={e=>setF({...f,status:e.target.value})}><option value='all'>All statuses</option>{options('status').filter(x=>x!=='all').map(x=><option key={x} value={x}>{x}</option>)}</select></label><label><span>Brand</span><select value={f.brand} onChange={e=>setF({...f,brand:e.target.value})}>{options('brand').map(x=><option key={x} value={x}>{x==='all'?'All brands':x}</option>)}</select></label></div>}</section>
-   <div className='rc-tabs-wrap'><div className='rc-tabs-label'>Report views</div><div className='rc-tabs'>{TYPES.map(([id,label])=><button key={id} className={type===id?'active':''} onClick={()=>setType(id)}>{label}</button>)}</div></div>
-   {loading?<div className='rc-loading'><div className='rc-spinner'></div><strong>Loading production data</strong><span>Preparing your report workspace…</span></div>:error?<div className='rc-error'><strong>Could not load reports</strong><span>{error}</span></div>:<>
-   {type==='summary'&&<><div className='rc-kpis'><div><span>Batch requirement</span><strong>{qty(rows.reduce((s,r)=>s+n(r.p.planned_qty),0))}</strong><small>Units requested</small></div><div><span>Shift capacity</span><strong>{qty(totals.capacity)}</strong><small>Available capacity</small></div><div><span>Planned allocation</span><strong>{qty(totals.planned)}</strong><small>Allocated to shifts</small></div><div><span>Actual scanned</span><strong>{qty(totals.actual)}</strong><small>Completed serials</small></div><div><span>Pending</span><strong>{qty(Math.max(0,totals.planned-totals.actual))}</strong><small>Against allocation</small></div><div><span>Efficiency</span><strong>{pct(totals.actual,totals.planned)}%</strong><small>Actual vs planned</small></div></div>{table(['Date','Line','Product / Model','Shift','Capacity','Allocation','Actual','Pending','Efficiency'],rows.map(r=><tr key={r.p.id}><td>{dateKey(r.p.production_date)}</td><td><span className='rc-chip'>{r.p.production_line}</span></td><td><strong>{r.p.product_name}</strong><small>{r.p.model}</small></td><td>{r.p.shift_name}</td><td>{qty(r.capacity)}</td><td>{qty(r.allocation)}</td><td className='rc-actual'>{qty(r.actual)}</td><td>{qty(Math.max(0,r.allocation-r.actual))}</td><td><strong>{pct(r.actual,r.allocation)}%</strong></td></tr>))}</>}
-   {type==='day'&&table(['Date','Shift capacity','Planned allocation','Actual','Pending','Efficiency','Plans'],dayRows.map(x=><tr key={x.date}><td><strong>{x.date}</strong></td><td>{qty(x.capacity)}</td><td>{qty(x.planned)}</td><td className='rc-actual'>{qty(x.actual)}</td><td>{qty(Math.max(0,x.planned-x.actual))}</td><td><strong>{pct(x.actual,x.planned)}%</strong></td><td>{x.plans}</td></tr>))}
-   {type==='plan'&&table(['Production plan','Original date','Product / Model','Requirement','Capacity','Allocation','Actual','Pending','Days','Efficiency'],planRows.map(x=><tr key={x.root.id}><td><code>{x.root.id.slice(0,8)}</code></td><td>{dateKey(x.root.production_date)}</td><td><strong>{x.root.product_name}</strong><small>{x.root.model}</small></td><td>{qty(x.root.planned_qty)}</td><td>{qty(x.capacity)}</td><td>{qty(x.planned)}</td><td className='rc-actual'>{qty(x.actual)}</td><td>{qty(x.pending)}</td><td>{x.dates}</td><td><strong>{x.eff}%</strong></td></tr>))}
-   {type==='hourly'&&table(['Date','Line','Product / Model','Shift','Hour','Planned','Actual','Variance','Efficiency'],hourlyRows.map((x,i)=><tr key={i}><td>{x.date}</td><td>{x.line}</td><td>{x.product}<small>{x.model}</small></td><td>{x.shift}</td><td>{x.hour}</td><td>{x.planned}</td><td className='rc-actual'>{x.actual}</td><td className={x.variance<0?'rc-bad':'rc-good'}>{x.variance>0?'+':''}{x.variance}</td><td>{x.eff}%</td></tr>))}
-   {type==='line'&&table(['Line','Capacity','Planned','Actual','Pending','Efficiency'],lineRows.map(x=><tr key={x.line}><td><strong>{x.line}</strong></td><td>{qty(x.capacity)}</td><td>{qty(x.planned)}</td><td className='rc-actual'>{qty(x.actual)}</td><td>{qty(x.pending)}</td><td>{x.eff}%</td></tr>))}
-   {type==='product'&&table(['Product','Model','Capacity','Planned','Actual','Pending','Efficiency'],productRows.map(x=><tr key={x.product+x.model}><td>{x.product}</td><td>{x.model}</td><td>{qty(x.capacity)}</td><td>{qty(x.planned)}</td><td className='rc-actual'>{qty(x.actual)}</td><td>{qty(x.pending)}</td><td>{x.eff}%</td></tr>))}
-   {type==='manpower'&&table(['Date','Line','Product / Model','Manpower','Rate/hr','Actual','Units / Manpower'],manpowerRows.map((x,i)=><tr key={i}><td>{x.date}</td><td>{x.line}</td><td>{x.product}<small>{x.model}</small></td><td>{x.manpower}</td><td>{x.rate}</td><td className='rc-actual'>{x.actual}</td><td>{x.unitsPerManpower}</td></tr>))}
-   {type==='serial'&&table(['Serial','Label','Date','Time','Line','Shift','Product','Model','Status','Plan'],serialRows.map((x,i)=><tr key={i}><td><code>{x.serial}</code></td><td>{x.label}</td><td>{x.date}</td><td>{x.time}</td><td>{x.line}</td><td>{x.shift}</td><td>{x.product}</td><td>{x.model}</td><td><span className='rc-status'>{x.status}</span></td><td><code>{x.plan}</code></td></tr>))}
-   {type==='carry'&&<div className='rc-carry-list'>{carryRows.map(x=><div className='rc-carry-card' key={x.root.id}><div className='rc-carry-head'><div><strong>{x.root.product_name} · {x.root.model}</strong><span>Plan {x.root.id.slice(0,8)} · Requirement {qty(x.root.planned_qty)}</span></div><b>{qty(x.actual)} / {qty(x.root.planned_qty)}</b></div><div className='rc-chain'>{x.chain.map((p,i)=><div key={p.id}><span>{i===0?'ORIGINAL':'CARRY-FORWARD '+i}</span><strong>{dateKey(p.production_date)} · {p.shift_name}</strong><em>{qty(allocation(p))} allocated · {qty((serialByPlan.get(p.id)||[]).filter(s=>s.status==='scanned').length)} actual</em></div>)}</div></div>)}</div>}
-   {type==='exceptions'&&table(['Date','Line','Product / Model','Shift','Hour','Planned','Actual','Variance','Issue'],exceptionRows.map((x,i)=><tr key={i}><td>{x.date}</td><td>{x.line}</td><td>{x.product}<small>{x.model}</small></td><td>{x.shift}</td><td>{x.hour}</td><td>{x.planned}</td><td>{x.actual}</td><td className='rc-bad'>{x.variance}</td><td>{x.actual===0?'Idle hour':'Under production'}</td></tr>))}
-   </>}
+  <main className='rc-main rc-report-workspace'>
+   <div className='rc-top rc-report-heading'>
+    <div><span className='rc-kicker'>PRODUCTION MIS</span><h1>Production Reports</h1><p>Analyze accepted, rejected and total production across dates, products, brands, lines and shifts.</p></div>
+    <div className='rc-top-actions'><button className='rc-export' onClick={()=>downloadCsv('pro-scan-'+reportType+'-report.csv',reportHeaders,exportRows)}>Export CSV / Excel</button><button className='rc-print' onClick={()=>window.print()}>Print / Save PDF</button></div>
+   </div>
+
+   <section className='rc-filter-card rc-filter-card-new'>
+    <div className='rc-filter-head'><div><strong>Report Filters</strong><span>{filteredPlans.length.toLocaleString('en-IN')} production plans in view</span></div><div className='rc-filter-actions'><button className='rc-reset' onClick={reset}>Reset</button><button className='rc-reset' onClick={()=>void load()}>↻ Refresh</button></div></div>
+    <div className='rc-filter-grid rc-filter-new-grid'>
+     <label><span>Report type</span><select value={reportType} onChange={e=>setReportType(e.target.value)}>{REPORT_TYPES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+     <label><span>From</span><input type='date' value={filters.from} onChange={e=>setFilter('from',e.target.value)}/></label>
+     <label><span>To</span><input type='date' value={filters.to} onChange={e=>setFilter('to',e.target.value)}/></label>
+     <label><span>Brand</span><select value={filters.brand} onChange={e=>setFilter('brand',e.target.value)}><option value='all'>All brands</option>{brands.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+     <label><span>Product</span><select value={filters.product} onChange={e=>setFilter('product',e.target.value)}><option value='all'>All products</option>{products.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+     <label><span>Production line</span><select value={filters.line} onChange={e=>setFilter('line',e.target.value)}><option value='all'>All lines</option>{lines.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+     <label><span>Shift</span><select value={filters.shift} onChange={e=>setFilter('shift',e.target.value)}><option value='all'>All shifts</option>{shifts.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+    </div>
+   </section>
+
+   <section className='rc-kpis rc-quality-kpis'>
+    <div><span>Planned Qty</span><strong>{qty(totals.planned)}</strong><small>Scheduled production quantity</small></div>
+    <div><span>Actual Qty</span><strong>{qty(totals.actual)}</strong><small>Accepted + rejected quantity</small></div>
+    <div><span>Rejected Qty</span><strong>{qty(totals.rejected)}</strong><small>Awaiting rework or reinspection</small></div>
+    <div><span>Accepted Qty</span><strong>{qty(totals.accepted)}</strong><small>Passed production / reinspection</small></div>
+   </section>
+
+   <section className='rc-table-section'>
+    <div className='rc-table-title'><div><span className='rc-kicker'>{reportLabel.toUpperCase()}</span><h2>{reportLabel}</h2></div><span>{reportRows.length.toLocaleString('en-IN')} report row(s)</span></div>
+    {loading?<div className='rc-loading'><div className='rc-spinner'></div><strong>Loading production data</strong><span>Preparing report metrics…</span></div>
+    :error?<div className='rc-error'><strong>Could not load reports</strong><span>{error}</span></div>
+    :<div className='rc-table-wrap'><table className='rc-table'><thead><tr>{reportHeaders.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>
+      {reportRows.length?reportRows.map(row=>reportType==='overall'?<tr key={row.key}><td>{row.date}</td><td>{row.brand}</td><td>{row.product}</td><td>{row.model}</td><td>{row.line}</td><td>{row.shift}</td><td>{qty(row.planned)}</td><td className='rc-actual'>{qty(row.actual)}</td><td className='rc-bad'>{qty(row.rejected)}</td><td className='rc-good'>{qty(row.accepted)}</td><td>{qty(row.pending)}</td></tr>
+       :reportType==='hour'?<tr key={row.key}><td>{row.date}</td><td>{row.line}</td><td>{row.brand}</td><td>{row.product} / {row.model}</td><td>{row.shift}</td><td>{row.hour}</td><td>{qty(row.planned)}</td><td className='rc-actual'>{qty(row.actual)}</td><td className='rc-bad'>{qty(row.rejected)}</td><td className='rc-good'>{qty(row.accepted)}</td><td>{qty(row.pending)}</td></tr>
+       :<tr key={row.key}><td>{row.label}</td><td>{qty(row.plans)}</td><td>{qty(row.planned)}</td><td className='rc-actual'>{qty(row.actual)}</td><td className='rc-bad'>{qty(row.rejected)}</td><td className='rc-good'>{qty(row.accepted)}</td><td>{qty(row.pending)}</td></tr>)
+      :<tr><td colSpan={reportHeaders.length} className='rc-empty'>No production data matches these filters.</td></tr>}
+    </tbody></table></div>}
+   </section>
   </main>
  </div>;
 }
