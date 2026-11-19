@@ -324,7 +324,7 @@ export default function App({user}){
   finally{monitoringRefreshRef.current=false;}
  };
  const updatePlanStatus=async(planId,status)=>{
-  if(status==='cancelled'&&!window.confirm('Cancel this production plan? It will no longer be available for operator scanning.'))return;
+  if(status==='cancelled'){const plan=plans.find(row=>row.id===planId);const title=[plan?.production_date,plan?.production_line,plan?.product_name,plan?.model].filter(Boolean).join(' · ');if(!window.confirm('Cancel '+(title||'this production plan')+'? It will be removed from Operator selection. Existing scan and production history will be retained.'))return;}
   setStatusUpdatingId(planId);
   const {data,error}=await supabase.from('production_plans').update({status}).eq('id',planId).select().single();
   if(error){setMessage('Could not update production plan: '+error.message);setStatusUpdatingId('');return;}
@@ -658,10 +658,71 @@ export default function App({user}){
   if(!Number.isInteger(qty)||qty<1)return setMessage('Planned quantity must be a whole number greater than zero.');
   if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
   if(hourlyTargetTotal!==qty)return setMessage('Hourly targets total '+hourlyTargetTotal.toLocaleString()+' units, but the production requirement is '+qty.toLocaleString()+'. Update the requirement or hourly quantities so they match.');
-  if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
-  if(qty>rows.length)return setMessage('Production requirement is '+qty.toLocaleString()+' units, but '+rows.length.toLocaleString()+' unique serial/label pairs are loaded. Add '+(qty-rows.length).toLocaleString()+' more unique pair(s) to this Draft before saving. Existing allocations will be retained when you upload an additional file.');
+  if(!rows.length&&!editingPlanId)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
   if(importConflicts.length)return setMessage('Plan creation blocked: '+importConflicts.length.toLocaleString()+' serial/label pairs in this upload already exist in the database.');
-  const chosen=rows.slice(0,qty).map(row=>({label_number:row.label_number,serial_number:row.serial_number}));
+
+  // For an edited Draft, top up the serial allocation from the matching
+  // Monthly Plan pool when its planned quantity is increased.
+  let saveRows=rows;
+  if(editingPlanId&&qty>saveRows.length){
+   const needed=qty-saveRows.length;
+   setBusy(true);
+   setMessage('Checking the matching Monthly Plan pool for '+needed.toLocaleString()+' additional serial-label pair(s)…');
+   try{
+    const month=String(form.production_date||'').slice(0,7);
+    if(!/^\\d{4}-\\d{2}$/.test(month))throw new Error('Choose a valid production date before increasing the Draft quantity.');
+    const monthDate=month+'-01';
+    const monthlyResult=await supabase.from('monthly_production_plans')
+     .select('id,plan_month,brand,product_name,model,total_qty,status')
+     .eq('plan_month',monthDate)
+     .eq('status','active')
+     .order('created_at',{ascending:false});
+    if(monthlyResult.error)throw new Error('Could not find the matching Monthly Plan: '+monthlyResult.error.message);
+    const normalize=value=>String(value||'').trim().toLowerCase();
+    const monthlyPlan=(monthlyResult.data||[]).find(item=>
+     normalize(item.brand)===normalize(form.brand)&&
+     normalize(item.product_name)===normalize(form.product_name)&&
+     normalize(item.model)===normalize(form.model)
+    );
+    if(!monthlyPlan)throw new Error('No active Monthly Plan matches '+form.brand+' · '+form.product_name+' · '+form.model+' for '+month+'. Add the missing serial pairs to the Monthly Plan first.');
+
+    const [poolResult,allocatedResult,registryResult]=await Promise.all([
+     fetchAllRows((from,to)=>supabase.from('monthly_plan_serials').select('label_number,serial_number,sequence_no').eq('monthly_plan_id',monthlyPlan.id).order('sequence_no',{ascending:true}).range(from,to)),
+     fetchAllRows((from,to)=>supabase.from('plan_serials').select('serial_number,label_number').order('id',{ascending:true}).range(from,to)),
+     fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to))
+    ]);
+    if(poolResult.error)throw new Error('Could not read the Monthly Plan serial pool: '+poolResult.error.message);
+    if(allocatedResult.error)throw new Error('Could not verify existing Daily Plan allocations: '+allocatedResult.error.message);
+    if(registryResult.error)throw new Error('Could not verify the serial registry: '+registryResult.error.message);
+
+    const usedSerials=new Set((allocatedResult.data||[]).map(row=>normalize(row.serial_number)).filter(Boolean));
+    const usedLabels=new Set((allocatedResult.data||[]).map(row=>normalize(row.label_number)).filter(Boolean));
+    const registeredSerials=new Set((registryResult.data||[]).map(row=>normalize(row.serial_number)).filter(Boolean));
+    const additional=[];
+    for(const pair of poolResult.data||[]){
+     const serial=String(pair.serial_number||'').trim();
+     const label=String(pair.label_number||'').trim();
+     const serialKey=normalize(serial),labelKey=normalize(label);
+     if(!serialKey||!labelKey||usedSerials.has(serialKey)||usedLabels.has(labelKey)||registeredSerials.has(serialKey))continue;
+     usedSerials.add(serialKey);usedLabels.add(labelKey);
+     additional.push({serial_number:serial,label_number:label});
+     if(additional.length>=needed)break;
+    }
+    if(additional.length<needed)throw new Error('Only '+additional.length.toLocaleString()+' unallocated serial-label pair(s) are available in this Monthly Plan. '+needed.toLocaleString()+' are required. Add more serials to the Monthly Plan before saving.');
+    saveRows=[...saveRows,...additional];
+    try{validatePairs(saveRows);}catch(error){throw new Error('The additional Monthly Plan serials could not be validated: '+error.message);}
+    setRows(saveRows);
+    setSourceFile(sourceFile?sourceFile+' + Monthly Plan pool':'Existing Draft allocation + Monthly Plan pool');
+    setFileInfo(rows.length.toLocaleString()+' existing allocation(s) retained · '+additional.length.toLocaleString()+' new pair(s) reserved from '+monthlyPlan.plan_month.slice(0,7));
+    setMessage('Added '+additional.length.toLocaleString()+' unique serial-label pair(s) from the '+monthlyPlan.plan_month.slice(0,7)+' Monthly Plan. Existing Draft allocations are retained; saving the new quantity…');
+   }catch(error){
+    setBusy(false);
+    return setMessage(error?.message||'Could not reserve additional serials from the Monthly Plan. No Draft changes were saved.');
+   }
+  }
+  if(!editingPlanId&&qty>saveRows.length)return setMessage('Production requirement is '+qty.toLocaleString()+' units, but '+saveRows.length.toLocaleString()+' unique serial/label pairs are loaded. Add '+(qty-saveRows.length).toLocaleString()+' more unique pair(s) before creating this plan.');
+  if(qty>saveRows.length)return setMessage('The Draft still needs '+(qty-saveRows.length).toLocaleString()+' additional unique serial-label pair(s). No changes were saved.');
+  const chosen=saveRows.slice(0,qty).map(row=>({label_number:row.label_number,serial_number:row.serial_number}));
   try{validatePairs(chosen);}catch(error){return setMessage(error.message);}
   setBusy(true);setMessage('Rechecking uploaded batch against existing production data…');
   try{const conflicts=await checkDatabaseForConflicts(chosen,editingPlanId||'');setImportConflicts(conflicts);if(conflicts.length){setBusy(false);return setMessage('Plan save blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist elsewhere in the database.');}}
