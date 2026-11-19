@@ -159,10 +159,10 @@ if(source.includes(oldAction))source=source.replace(oldAction,newAction);
 source=source.replace("<div className='empty'>No daily plans created yet.</div>","<div className='empty'>No daily plans match the selected filters.</div>");
 const tableClose="</table></div>:<div className='empty'>";
 const pagination=[
-"</table></div><div className='daily-record-pagination'>",
+"</table><div className='daily-record-pagination'>",
 " <span>Showing {dailyRecordFilteredPlans.length?((dailyRecordPage-1)*dailyRecordPageSize+1).toLocaleString():'0'}–{Math.min(dailyRecordPage*dailyRecordPageSize,dailyRecordFilteredPlans.length).toLocaleString()} of {dailyRecordFilteredPlans.length.toLocaleString()}</span>",
 " <div><button type='button' disabled={dailyRecordPage<=1} onClick={()=>setDailyRecordPage(page=>Math.max(1,page-1))}>Previous</button><span>Page {dailyRecordPage} of {dailyRecordPageCount}</span><button type='button' disabled={dailyRecordPage>=dailyRecordPageCount} onClick={()=>setDailyRecordPage(page=>Math.min(dailyRecordPageCount,page+1))}>Next</button></div>",
-"</div>:<div className='empty'>"
+"</div></div>:<div className='empty'>"
 ].join('\n');
 if(source.includes(tableClose)&&!source.includes("className='daily-record-pagination'"))source=source.replace(tableClose,pagination);
 
