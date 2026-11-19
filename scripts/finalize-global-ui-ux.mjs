@@ -24,6 +24,7 @@ const oldDailyFields=[
 "   <label>Model<input value={form.model} readOnly/></label>",
 "   <label>MRP<input value={dailyMonthlyPlans.find(plan=>plan.id===dailyMonthlyPlanId)?'₹ '+Number(dailyMonthlyPlans.find(plan=>plan.id===dailyMonthlyPlanId).mrp||0).toLocaleString('en-IN'):''} readOnly/></label>",
 "   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(line=><option key={line}>{line}</option>)}</select></label>"
+"  </div>"
 ].join('\n');
 const newDailyFields=[
 "   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(line=><option key={line}>{line}</option>)}</select></label>",
