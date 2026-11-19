@@ -12,12 +12,14 @@ source=source.replace(stateAnchor,stateReplacement);
 
 // Helpers for hourly rate and the next automatically allotted carry-forward shift.
 const helperAnchor=" const planCapacity=plan=>Number(plan?.shift_planned_qty??plan?.planned_qty??0);\n const planRequirement=plan=>Number(plan?.planned_qty||0);\n const planCarryForward=plan=>{const explicit=Number(plan?.carry_forward_qty||0);return explicit>0?explicit:Math.max(0,planRequirement(plan)-planCapacity(plan));};\n";
-const helperAdd=` const planScannedCount=plan=>monitoringSerials.filter(row=>row.plan_id===plan?.id&&row.status==='scanned').length;
+const helperAdd=\` const planHours=plan=>{const start=String(plan?.shift_start||'').trim().slice(0,5),end=String(plan?.shift_end||'').trim().slice(0,5),toMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value);return match?Number(match[1])*60+Number(match[2]):NaN;},a=toMinutes(start),b=toMinutes(end);return Number.isFinite(a)&&Number.isFinite(b)&&b>a?Math.max(1,Math.round((b-a)/60)):Math.max(1,Array.isArray(plan?.hourly_targets)?plan.hourly_targets.length:1);};
+ const planHourlyRate=plan=>{const first=Array.isArray(plan?.hourly_targets)?plan.hourly_targets.find(row=>Number(row?.planned_qty||0)>0):null;return Math.max(0,Math.floor(Number(first?.planned_qty??(planCapacity(plan)/planHours(plan)))||0));};
+ const planScannedCount=plan=>monitoringSerials.filter(row=>row.plan_id===plan?.id&&row.status==='scanned').length;
  const planCarryPreview=plan=>{
   if(!plan)return null;
   const destination=plan?.carry_forward_plan_id?plans.find(row=>row.id===plan.carry_forward_plan_id):null;
   if(destination)return {actual:true,plan:destination,quantity:planCarryForward(plan)};
-  const quantity=planCarryForward(plan),rate=Math.max(1,getPlanHourlyRate(plan));
+  const quantity=planCarryForward(plan),rate=Math.max(1,planHourlyRate(plan));
   if(quantity<=0)return {actual:false,plan:null,quantity:0};
   const dateValue=String(plan.production_date||'').slice(0,10);
   const nextDate=new Date(dateValue+'T00:00:00');
@@ -70,7 +72,7 @@ source=source.replace(
 );
 source=source.replace(
  "   <section className='operator-shift-info'>\n    <div><span>SHIFT WINDOW</span><strong>{planShiftLabel(selectedPlan)}</strong></div>\n    <div><span>PRODUCTION LINE</span><strong>{selectedPlan.production_line}</strong></div>\n    <div><span>PLAN STATUS</span><strong className={'operator-status-text status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</strong></div>\n   </section>",
- "   <section className='operator-shift-info'>\n    <div><span>SHIFT WINDOW</span><strong>{planShiftLabel(selectedPlan)}</strong></div>\n    <div><span>HOURLY PRODUCTION RATE</span><strong>{getPlanHourlyRate(selectedPlan).toLocaleString()} units/hr</strong></div>\n    <div><span>SHIFT CAPACITY</span><strong>{planCapacity(selectedPlan).toLocaleString()} units</strong></div>\n    <div><span>BATCH REQUIREMENT</span><strong>{planRequirement(selectedPlan).toLocaleString()} units</strong></div>\n    <div><span>CARRY FORWARD</span><strong>{planCarryForward(selectedPlan).toLocaleString()} units</strong></div>\n    <div><span>MANPOWER</span><strong>{Number(selectedPlan.manpower_count||0).toLocaleString()}</strong></div>\n    <div><span>PRODUCTION LINE</span><strong>{selectedPlan.production_line}</strong></div>\n    <div><span>PLAN STATUS</span><strong className={'operator-status-text status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</strong></div>\n   </section>"
+ "   <section className='operator-shift-info'>\n    <div><span>SHIFT WINDOW</span><strong>{planShiftLabel(selectedPlan)}</strong></div>\n    <div><span>HOURLY PRODUCTION RATE</span><strong>{planHourlyRate(selectedPlan).toLocaleString()} units/hr</strong></div>\n    <div><span>SHIFT CAPACITY</span><strong>{planCapacity(selectedPlan).toLocaleString()} units</strong></div>\n    <div><span>BATCH REQUIREMENT</span><strong>{planRequirement(selectedPlan).toLocaleString()} units</strong></div>\n    <div><span>CARRY FORWARD</span><strong>{planCarryForward(selectedPlan).toLocaleString()} units</strong></div>\n    <div><span>MANPOWER</span><strong>{Number(selectedPlan.manpower_count||0).toLocaleString()}</strong></div>\n    <div><span>PRODUCTION LINE</span><strong>{selectedPlan.production_line}</strong></div>\n    <div><span>PLAN STATUS</span><strong className={'operator-status-text status-'+selectedPlan.status}>{selectedPlan.status.toUpperCase()}</strong></div>\n   </section>"
 );
 source=source.replace(
  "const completedByThisScan=Number(selectedPlan.planned_qty||0)>0&&planSerials.filter(row=>row.status==='scanned').length+1>=Number(selectedPlan.planned_qty||0);",
@@ -113,7 +115,7 @@ const manageReplacement=`<tbody>{filteredPlans.map(plan=>{
       <div><b>Line</b><strong>{plan.production_line||'—'}</strong></div>
       <div><b>Shift</b><strong>{plan.shift_name||'Shift A'}</strong></div>
       <div><b>Shift window</b><strong>{planShiftLabel(plan)}</strong></div>
-      <div><b>Hourly rate</b><strong>{getPlanHourlyRate(plan).toLocaleString()} units/hr</strong></div>
+      <div><b>Hourly rate</b><strong>{planHourlyRate(plan).toLocaleString()} units/hr</strong></div>
       <div><b>Shift capacity</b><strong>{capacity.toLocaleString()} units</strong></div>
       <div><b>Batch requirement</b><strong>{requirement.toLocaleString()} units</strong></div>
       <div><b>Actual scanned</b><strong>{scanned.toLocaleString()} units</strong></div>
@@ -130,7 +132,7 @@ const manageReplacement=`<tbody>{filteredPlans.map(plan=>{
       <div style={{padding:'12px',borderRadius:'12px',background:'#fff7ed',border:'1px solid #fed7aa'}}><strong>{carry.toLocaleString()} units</strong> will move to the next available production shift if this plan closes unfinished.</div>
       <div style={{marginTop:'12px',display:'grid',gap:'8px'}}>
        <div><b>Source:</b> {sourcePlan?sourcePlan.production_date+' · '+sourcePlan.production_line+' · '+planShiftLabel(sourcePlan):plan.production_date+' · '+plan.production_line+' · '+planShiftLabel(plan)}</div>
-       {destination?<div><b>Auto-allotted shift:</b> {destination.production_date} · {destination.production_line} · {destination.shift_name||'Shift A'} · {planShiftLabel(destination)} · {getPlanHourlyRate(destination).toLocaleString()} units/hr · capacity {planCapacity(destination).toLocaleString()} · manpower {Number(destination.manpower_count||0).toLocaleString()}</div>:preview?<div><b>Next auto-allotted shift (preview):</b> {preview.date} · {preview.line} · {preview.shiftName} · {formatClock12(preview.start)}–{formatClock12(preview.end)} · {preview.rate.toLocaleString()} units/hr · capacity {preview.capacity.toLocaleString()} · manpower {preview.manpower.toLocaleString()}</div>:<div><b>Next auto-allotted shift:</b> Will be calculated from the next available shift on this production line.</div>}
+       {destination?<div><b>Auto-allotted shift:</b> {destination.production_date} · {destination.production_line} · {destination.shift_name||'Shift A'} · {planShiftLabel(destination)} · {planHourlyRate(destination).toLocaleString()} units/hr · capacity {planCapacity(destination).toLocaleString()} · manpower {Number(destination.manpower_count||0).toLocaleString()}</div>:preview?<div><b>Next auto-allotted shift (preview):</b> {preview.date} · {preview.line} · {preview.shiftName} · {formatClock12(preview.start)}–{formatClock12(preview.end)} · {preview.rate.toLocaleString()} units/hr · capacity {preview.capacity.toLocaleString()} · manpower {preview.manpower.toLocaleString()}</div>:<div><b>Next auto-allotted shift:</b> Will be calculated from the next available shift on this production line.</div>}
        {sourcePlan&&<div><b>Received from:</b> {sourcePlan.production_date} · {sourcePlan.production_line} · {planShiftLabel(sourcePlan)} · {planRequirement(sourcePlan).toLocaleString()} batch requirement</div>}
        {destination&&<div><b>Moved to plan:</b> #{destination.id.slice(0,8)} · {destination.status}</div>}
       </div>
