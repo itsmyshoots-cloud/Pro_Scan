@@ -596,25 +596,56 @@ export default function App({user}){
  const stats=useMemo(()=>plans.reduce((a,p)=>{a.target+=p.planned_qty||0;return a},{target:0}),[plans]);
  const importFile=async e=>{
   const input=e.currentTarget,f=input.files?.[0];if(!f)return;
-  setBusy(true);setRows([]);setImportConflicts([]);setSourceFile('');setFileInfo('');setMessage('Reading '+f.name+'…');
+  const existingRows=editingPlanId?(Array.isArray(rows)?rows.slice():[]):[];
+  setBusy(true);if(!editingPlanId)setRows([]);setImportConflicts([]);setSourceFile('');setFileInfo('');setMessage('Reading '+f.name+'…');
   try{
    let parsed,pages=0;
    if(f.name.toLowerCase().endsWith('.pdf')){const result=await parseSupplierPdf(f,setMessage);parsed=result.rows;pages=result.pages;}
    else parsed=pairsFromText(await f.text());
-   validatePairs(parsed);setRows(parsed);setSourceFile(f.name);setFileInfo(pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file');
-   setMessage('Checking '+parsed.length.toLocaleString()+' serial-label pairs against existing production data…');
-   const conflicts=await checkDatabaseForConflicts(parsed,editingPlanId||'');setImportConflicts(conflicts);
-   if(conflicts.length)setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pairs already exist in the database.');
-   else{
-    const currentQty=Number(form.planned_qty||0);
-    if(currentQty>parsed.length){
-     setForm(previous=>({...previous,planned_qty:parsed.length}));setHourlyTargets(previous=>rebalanceHourlyTargets(previous,parsed.length));
-     setMessage('Planned quantity adjusted to '+parsed.length.toLocaleString()+' to match the available serials. Hourly targets were rebalanced; review them before saving.');
-    }else setMessage(parsed.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
+   validatePairs(parsed);
+   const mergedRows=editingPlanId?existingRows.slice():[];
+   const existingByLabel=new Map(mergedRows.map(row=>[String(row.label_number||'').trim().toUpperCase(),String(row.serial_number||'').trim().toUpperCase()]));
+   const existingBySerial=new Map(mergedRows.map(row=>[String(row.serial_number||'').trim().toUpperCase(),String(row.label_number||'').trim().toUpperCase()]));
+   let addedCount=0;
+   for(const row of parsed){
+    const label=String(row.label_number||'').trim().toUpperCase();
+    const serial=String(row.serial_number||'').trim().toUpperCase();
+    const labelMatch=existingByLabel.get(label);
+    const serialMatch=existingBySerial.get(serial);
+    if(labelMatch===serial&&serialMatch===label)continue;
+    if(labelMatch!==undefined)throw new Error('Label '+row.label_number+' is already allocated to a different serial in this Draft.');
+    if(serialMatch!==undefined)throw new Error('Serial '+row.serial_number+' is already allocated to a different label in this Draft.');
+    mergedRows.push(row);existingByLabel.set(label,serial);existingBySerial.set(serial,label);addedCount++;
    }
-  }catch(error){setRows([]);setImportConflicts([]);setMessage(error?.message||'Could not read or validate the supplier file.');}
+   validatePairs(mergedRows);
+   setMessage('Checking '+parsed.length.toLocaleString()+' uploaded serial-label pair(s) against other production plans…');
+   const conflicts=await checkDatabaseForConflicts(parsed,editingPlanId||'');setImportConflicts(conflicts);
+   if(conflicts.length){
+    if(!editingPlanId)setRows([]);
+    setMessage('Upload blocked: '+conflicts.length.toLocaleString()+' serial/label pair(s) are already allocated elsewhere in the database. Existing Draft allocations have been retained.');
+   }else{
+    setRows(mergedRows);
+    setSourceFile(editingPlanId&&existingRows.length?((sourceFile||'Existing Draft allocation')+' + '+f.name):f.name);
+    setFileInfo((pages?'PDF · '+pages.toLocaleString()+' pages':'Text/CSV file')+(editingPlanId?' · Draft allocation retained':''));
+    const currentQty=Number(form.planned_qty||0);
+    if(!editingPlanId&&currentQty>mergedRows.length){
+     setForm(previous=>({...previous,planned_qty:mergedRows.length}));
+     setHourlyTargets(previous=>rebalanceHourlyTargets(previous,mergedRows.length));
+     setMessage('Planned quantity adjusted to '+mergedRows.length.toLocaleString()+' to match the available serials. Hourly targets were rebalanced; review them before saving.');
+    }else if(editingPlanId&&currentQty>mergedRows.length){
+     setMessage(addedCount.toLocaleString()+' additional pair(s) added. Draft now has '+mergedRows.length.toLocaleString()+' / '+currentQty.toLocaleString()+' required pairs. Upload '+(currentQty-mergedRows.length).toLocaleString()+' more pair(s). Existing Draft allocations are retained.');
+    }else{
+     setMessage(editingPlanId?('Draft now has '+mergedRows.length.toLocaleString()+' / '+currentQty.toLocaleString()+' required pairs. '+addedCount.toLocaleString()+' new pair(s) added; existing allocations retained.'):mergedRows.length.toLocaleString()+' unique serial-label pairs loaded. No duplicates found in the database.');
+    }
+   }
+  }catch(error){
+   if(!editingPlanId)setRows([]);
+   setImportConflicts([]);
+   setMessage(error?.message||'Could not read or validate the supplier file. Existing Draft allocations have been retained.');
+  }
   finally{setBusy(false);input.value='';}
  };
+
  const createPlan=async()=>{
   const qty=Number(form.planned_qty);
   if(!form.product_name.trim()||!form.model.trim())return setMessage('Enter product and model.');
@@ -622,7 +653,7 @@ export default function App({user}){
   if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
   if(hourlyTargetTotal!==qty)return setMessage('Hourly targets total '+hourlyTargetTotal.toLocaleString()+' units, but the production requirement is '+qty.toLocaleString()+'. Update the requirement or hourly quantities so they match.');
   if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
-  if(qty>rows.length)return setMessage('Production requirement is '+qty.toLocaleString()+' units, but only '+rows.length.toLocaleString()+' unique serial/label pairs are loaded. Upload the complete serial file with at least '+qty.toLocaleString()+' pairs before saving.');
+  if(qty>rows.length)return setMessage('Production requirement is '+qty.toLocaleString()+' units, but '+rows.length.toLocaleString()+' unique serial/label pairs are loaded. Add '+(qty-rows.length).toLocaleString()+' more unique pair(s) to this Draft before saving. Existing allocations will be retained when you upload an additional file.');
   if(importConflicts.length)return setMessage('Plan creation blocked: '+importConflicts.length.toLocaleString()+' serial/label pairs in this upload already exist in the database.');
   const chosen=rows.slice(0,qty).map(row=>({label_number:row.label_number,serial_number:row.serial_number}));
   try{validatePairs(chosen);}catch(error){return setMessage(error.message);}
