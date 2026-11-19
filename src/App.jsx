@@ -5,8 +5,18 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from './lib/supabase';
 
 const lines=['Line 1','Line 2','Line 3'];
+function getPlanHourlyRate(plan){
+ const targets=Array.isArray(plan?.hourly_targets)?plan.hourly_targets:[];
+ const first=targets.find(row=>Number(row?.planned_qty||0)>0);
+ if(first)return Math.max(0,Math.floor(Number(first.planned_qty)||0));
+ const clockMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(String(value||'').trim().slice(0,5));return match?Number(match[1])*60+Number(match[2]):NaN;};
+ const start=clockMinutes(plan?.shift_start),end=clockMinutes(plan?.shift_end);
+ const hours=Number.isFinite(start)&&Number.isFinite(end)&&end>start?Math.max(1,Math.round((end-start)/60)):Math.max(1,targets.length);
+ const capacity=Number(plan?.shift_planned_qty??plan?.planned_qty??0);
+ return Math.max(0,Math.floor(capacity/hours));
+}
 function createHourlyTargets(start='09:00',end='18:00',previous=[]){
- const toMinutes=value=>{const match=/^(\d{2}):(\d{2})$/.exec(value||'');if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m>=0&&m<60?h*60+m:NaN;};
+ const toMinutes=value=>{const normalized=String(value||'').trim().slice(0,5);const match=/^(\d{2}):(\d{2})$/.exec(normalized);if(!match)return NaN;const h=Number(match[1]),m=Number(match[2]);return h>=0&&h<24&&m>=0&&m<60?h*60+m:NaN;};
  const startMinutes=toMinutes(start),endMinutes=toMinutes(end);
  if(!Number.isFinite(startMinutes)||!Number.isFinite(endMinutes)||endMinutes<=startMinutes||(endMinutes-startMinutes)%60!==0)return [];
  const targetByHour=new Map((previous||[]).map(row=>[row.hour,Number(row.planned_qty||0)]));
@@ -335,7 +345,7 @@ export default function App({user}){
   const shift=getPlanShiftWindow(plan),startValue=shift?minutesToClock(shift.start):'09:00',endValue=shift?minutesToClock(shift.end):'18:00';
   const schedule=createHourlyTargets(startValue,endValue,Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]),qty=Number(plan.planned_qty||0);
   setEditingPlanId(plan.id);setForm({production_date:plan.production_date||localDateKey(new Date()),brand:plan.brand||'',product_name:plan.product_name||'',model:plan.model||'',production_line:plan.production_line||lines[0],planned_qty:qty});
-  setShiftName(plan.shift_name||'Shift A');setShiftStart(plan.shift_start||startValue);setShiftEnd(plan.shift_end||endValue);setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? (Number(plan.shift_planned_qty||0)/Math.max(1,Array.isArray(plan.hourly_targets)?plan.hourly_targets.length:1))));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.hourly_targets?.[0]?.planned_qty ?? 0)));
+  setShiftName(plan.shift_name||'Shift A');setShiftStart(String(plan.shift_start||startValue).trim().slice(0,5));setShiftEnd(String(plan.shift_end||endValue).trim().slice(0,5));setHourlyProductionQty(Number(plan.hourly_targets?.[0]?.planned_qty ?? (Number(plan.shift_planned_qty||0)/Math.max(1,Array.isArray(plan.hourly_targets)?plan.hourly_targets.length:1))));setManpowerCount(Number(plan.manpower_count||0));setHourlyTargets(Array.isArray(plan.hourly_targets)&&plan.hourly_targets.length?schedule:distributeHourlyTargetsEvenly(createHourlyTargets(startValue,endValue),Number(plan.hourly_targets?.[0]?.planned_qty ?? 0)));
   setRows(allocated.map(row=>({label_number:row.label_number,serial_number:row.serial_number})));
   setSourceFile(allocated.length?'Existing Draft Plan Allocation':'');setFileInfo(allocated.length?allocated.length.toLocaleString()+' allocated serials loaded':'No serial allocation found — upload a supplier file');
   setImportConflicts([]);setMessage('');setBusy(false);setView('planner');
