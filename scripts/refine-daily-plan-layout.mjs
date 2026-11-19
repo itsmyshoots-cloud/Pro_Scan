@@ -99,10 +99,11 @@ const notesAnchor="  <label className='daily-notes-field'>";
 if(!source.includes(notesAnchor)) throw new Error('Daily Notes anchor not found.');
 source=source.replace(notesAnchor,"  <div className='daily-step-heading daily-notes-heading'><span className='daily-step-number'>04</span><div><h3>Notes & instructions</h3><p>Optional setup notes or instructions for the production team.</p></div></div>\n"+notesAnchor);
 
-const oldRule="<div className='daily-rule-note'><strong>Serial allocation:</strong> {dailyAvailableQty.toLocaleString()} monthly serials are currently available. Creating this daily plan reserves exactly {Number(form.planned_qty||0).toLocaleString()} serials. The remaining quantity stays in the monthly pool for a future daily plan.</div>";
+const allocationNoteStart=source.indexOf("<div className='daily-rule-note'>");
+const allocationNoteEnd=source.indexOf('</div>',allocationNoteStart);
+if(allocationNoteStart<0||allocationNoteEnd<0)throw new Error('Daily allocation note structural wrapper not found.');
 const newRule="<div className='daily-rule-note'><strong>Monthly pool reservation:</strong> This plan reserves {Number(form.planned_qty||0).toLocaleString()} units. Any unallocated quantity remains available in the Monthly Plan for another date.</div>";
-if(!source.includes(oldRule)) throw new Error('Daily allocation note anchor not found.');
-source=source.replace(oldRule,newRule);
+source=source.slice(0,allocationNoteStart)+newRule+source.slice(allocationNoteEnd+'</div>'.length);
 
 const panelStart=source.indexOf(" <section className='panel daily-plan-panel'>",pageStart);
 if(panelStart<0) throw new Error('Daily Plan form panel not found.');
