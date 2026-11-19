@@ -26,8 +26,14 @@ export default function ProductionRejections({plan,operatorName='Operator',planS
   setRecords(data||[]);
  };
  useEffect(()=>{
+  setRecords([]);
+  setError('');
+  setNotice('');
+  if(plan?.id)load().catch(e=>setError(e.message||'Could not load quality control records.'));
+ },[plan?.id]);
+ useEffect(()=>{
   if(open){setError('');setNotice('');load().catch(e=>setError(e.message||'Could not load quality control records.'));}
- },[open,plan?.id]);
+ },[open]);
  useEffect(()=>{
   if(!open)return;
   const onKey=e=>{if(e.key==='Escape'&&!busy)setOpen(false);};
