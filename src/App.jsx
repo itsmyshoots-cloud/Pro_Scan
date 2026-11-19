@@ -410,6 +410,10 @@ export default function App({user}){
  const recentScannedSerials=useMemo(()=>[...scannedSerials].sort((a,b)=>new Date(b.scanned_at||0).getTime()-new Date(a.scanned_at||0).getTime()).slice(0,8),[scannedSerials]);
  const detailRows=useMemo(()=>{
   let rows=[];
+  if(detailsPanel==='hourly'){
+   const hourlyRows=buildPlanHourlyRows(selectedPlan,planSerials);
+   rows=hourlyRows.map(row=>({...row,id:'hour-'+row.hour,status:'hourly'}));
+  }
   if(detailsPanel==='planned')rows=planSerials;
   else if(detailsPanel==='scanned')rows=scannedSerials;
   else if(detailsPanel==='remaining')rows=pendingSerials;
@@ -600,7 +604,9 @@ export default function App({user}){
   if(!Number.isInteger(qty)||qty<1)return setMessage('Planned quantity must be a whole number greater than zero.');
   if(!hourlyTargets.length)return setMessage('Set a valid hourly shift window before creating the production plan.');
   const rate=Math.max(0,Math.floor(Number(hourlyProductionQty)||0));
- const shiftQty=rate*hourlyTargets.length; if(shiftQty>qty)return setMessage('Shift planned quantity cannot exceed total planned quantity.'); if(hourlyTargetTotal!==shiftQty)return setMessage('Hourly target total ('+hourlyTargetTotal.toLocaleString()+') must equal shift planned quantity ('+shiftQty.toLocaleString()+').');
+  const shiftQty=hourlyTargetTotal;
+  if(shiftQty<1)return setMessage('Enter at least one unit in the hourly production targets.');
+  if(shiftQty>qty)return setMessage('Total hourly planned quantity ('+shiftQty.toLocaleString()+') cannot exceed production requirement ('+qty.toLocaleString()+').');
   if(!rows.length)return setMessage('Upload a valid supplier PDF, CSV, or TXT before creating a plan. Demo serials are disabled.');
   if(qty>rows.length)return setMessage('Planned quantity ('+qty.toLocaleString()+') exceeds available serials ('+rows.length.toLocaleString()+'). Upload a serial file with at least '+qty.toLocaleString()+' unique pairs.');
   if(importConflicts.length)return setMessage('Plan creation blocked: '+importConflicts.length.toLocaleString()+' serial/label pairs in this upload already exist in the database.');
@@ -1022,6 +1028,7 @@ export default function App({user}){
     <button type='button' className='operator-workstation-metric metric-planned' onClick={()=>{setDetailsPanel('planned');setDetailsSearch('');}}><span>PLANNED QTY</span><strong>{Number(selectedPlan.planned_qty||0).toLocaleString()}</strong><small>Click to view all planned serials</small></button>
     <button type='button' className='operator-workstation-metric metric-scanned' onClick={()=>{setDetailsPanel('scanned');setDetailsSearch('');}}><span>SCANNED QTY</span><strong>{scannedSerials.length.toLocaleString()}</strong><small>Click to view scanned serials</small></button>
     <button type='button' className='operator-workstation-metric metric-pending' onClick={()=>{setDetailsPanel('remaining');setDetailsSearch('');}}><span>REMAINING QTY</span><strong>{pendingSerials.length.toLocaleString()}</strong><small>Click to view remaining serials</small></button>
+    <button type='button' className='operator-workstation-metric metric-hourly' onClick={()=>{setDetailsPanel('hourly');setDetailsSearch('');}}><span>HOURLY OUTPUT</span><strong>{buildPlanHourlyRows(selectedPlan,planSerials).reduce((sum,row)=>sum+row.actual_qty,0).toLocaleString()}</strong><small>View planned and scanned quantity by hour</small></button>
     <button type='button' className='operator-workstation-metric metric-duplicates' onClick={()=>{setDetailsPanel('duplicates');setDetailsSearch('');}}><span>DUPLICATE SCANS</span><strong>{duplicateScans.length.toLocaleString()}</strong><small>Click to view duplicate attempts</small></button>
    </div>
    <section className='operator-shift-info'>
@@ -1035,10 +1042,10 @@ export default function App({user}){
 {detailsPanel&&<div className='operator-detail-backdrop' role='presentation' onMouseDown={event=>{if(event.target===event.currentTarget){setDetailsPanel('');setDetailsSearch('');}}}><section className='operator-detail-dialog' role='dialog' aria-modal='true' aria-labelledby='operator-detail-title'>
  <header className='operator-detail-header'><div><span className='eyebrow'>PRODUCTION SERIAL DETAILS</span><h2 id='operator-detail-title'>{{planned:'Planned quantity',scanned:'Scanned quantity',remaining:'Remaining quantity',duplicates:'Duplicate scans'}[detailsPanel]}</h2><p>{selectedPlan?.production_line} · {selectedPlan?.product_name} · {planShiftLabel(selectedPlan)}</p></div><button type='button' className='operator-detail-close' aria-label='Close details' onClick={()=>{setDetailsPanel('');setDetailsSearch('');}}>×</button></header>
  <div className='operator-detail-tools'><label>Search serial, label, status or time<input value={detailsSearch} onChange={event=>setDetailsSearch(event.target.value)} placeholder='Type to filter this list'/></label><span><strong>{detailRows.length.toLocaleString()}</strong> record{detailRows.length===1?'':'s'}</span></div>
- <div className='operator-detail-table-wrap'><table className='operator-detail-table'><thead><tr>{detailsPanel==='duplicates'?<><th>Serial number</th><th>Label</th><th>Duplicate time</th><th>Operator</th><th>Line</th></>:<><th>Seq.</th><th>Label number</th><th>Serial number</th><th>Status</th><th>Scan time</th><th>Scanned by</th></>}</tr></thead><tbody>
+ <div className='operator-detail-table-wrap'><table className='operator-detail-table'><thead><tr>{detailsPanel==='hourly'?<><th>Hour</th><th>Planned quantity</th><th>Actual scanned</th><th>Balance</th><th>Unit</th></>:detailsPanel==='duplicates'?<><th>Serial number</th><th>Label</th><th>Duplicate time</th><th>Operator</th><th>Line</th></>:<><th>Seq.</th><th>Label number</th><th>Serial number</th><th>Status</th><th>Scan time</th><th>Scanned by</th></>}</tr></thead><tbody>
  {detailRows.length?detailRows.map((row,index)=><tr key={row.id||row.serial_number+'-'+index}>
- {detailsPanel==='duplicates'?<><td><strong>{row.serial_number||'—'}</strong></td><td>{row.label_number||'—'}</td><td>{row.scanned_at?new Date(row.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{row.operator_name||'—'}</td><td>{row.production_line||'—'}</td></>:<><td>{row.sequence_no??index+1}</td><td>{row.label_number||'—'}</td><td><strong>{row.serial_number||'—'}</strong></td><td><span className={'operator-detail-status status-'+(row.status||'pending')}>{String(row.status||'pending').toUpperCase()}</span></td><td>{row.scanned_at?new Date(row.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{row.scanned_by||'—'}</td></>}
- </tr>):<tr><td colSpan={detailsPanel==='duplicates'?5:6} className='operator-detail-empty'>{detailsPanel==='duplicates'?'No duplicate events match your search.':'No serial records match your search.'}</td></tr>}
+ {detailsPanel==='hourly'?<><td><strong>{getHourlySlotLabel(row.hour)}</strong></td><td>{Number(row.planned_qty||0).toLocaleString()}</td><td>{Number(row.actual_qty||0).toLocaleString()}</td><td>{(Number(row.planned_qty||0)-Number(row.actual_qty||0)).toLocaleString()}</td><td>{selectedPlan?.unit||selectedPlan?.uom||'Units'}</td></>:detailsPanel==='duplicates'?<><td><strong>{row.serial_number||'—'}</strong></td><td>{row.label_number||'—'}</td><td>{row.scanned_at?new Date(row.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{row.operator_name||'—'}</td><td>{row.production_line||'—'}</td></>:<><td>{row.sequence_no??index+1}</td><td>{row.label_number||'—'}</td><td><strong>{row.serial_number||'—'}</strong></td><td><span className={'operator-detail-status status-'+(row.status||'pending')}>{String(row.status||'pending').toUpperCase()}</span></td><td>{row.scanned_at?new Date(row.scanned_at).toLocaleString('en-IN'):'—'}</td><td>{row.scanned_by||'—'}</td></>}
+ </tr>):<tr><td colSpan={detailsPanel==='hourly'?5:detailsPanel==='duplicates'?5:6} className='operator-detail-empty'>{detailsPanel==='duplicates'?'No duplicate events match your search.':'No serial records match your search.'}</td></tr>}
  </tbody></table></div>
  <footer className='operator-detail-footer'><span>All times are shown in your browser’s local time zone.</span><button type='button' onClick={()=>{setDetailsPanel('');setDetailsSearch('');}}>Close</button></footer>
 </section></div>}
