@@ -45,7 +45,11 @@ const duplicateDailyMetric="<div><span>Daily planned</span><strong>{Number(form.
 source=source.replace(duplicateDailyMetric,'');
 const verboseAllocationNote="<div className='daily-rule-note'><strong>Serial allocation:</strong> {dailyAvailableQty.toLocaleString()} monthly serials are currently available. Creating this daily plan reserves exactly {Number(form.planned_qty||0).toLocaleString()} serials. The remaining quantity stays in the monthly pool for a future daily plan.</div>";
 const conciseAllocationNote="<div className='daily-rule-note'><strong>Serial allocation:</strong> Creating this plan reserves the entered quantity from the selected Monthly Plan. Any unallocated quantity remains available for future Daily Plans.</div>";
-if(source.includes(verboseAllocationNote))source=source.replace(verboseAllocationNote,conciseAllocationNote);
+const dailyHeroCardPattern=/<div className='daily-hero-card'>[\\s\\S]*?<\\/div>/;
+if(dailyHeroCardPattern.test(source))source=source.replace(dailyHeroCardPattern,'');
+const dailyRuleNotePattern=/<div className='daily-rule-note'>[\\s\\S]*?<\\/div>/;
+if(dailyRuleNotePattern.test(source))source=source.replace(dailyRuleNotePattern,conciseAllocationNote);
+else if(source.includes('className=\'daily-rule-note\''))throw new Error('Daily Plan allocation note could not be simplified safely.');
 
 const css=String.raw`
 /* global-ui-ux-v1 — consistent page rhythm, forms and production Live View */
