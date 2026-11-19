@@ -5,6 +5,11 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from './lib/supabase';
 
 const lines=['Line 1','Line 2','Line 3'];
+function getPlanHours(plan){
+ const clockMinutes=value=>{const parts=String(value||'').trim().slice(0,5).split(':').map(Number);return parts.length===2&&parts.every(Number.isFinite)?parts[0]*60+parts[1]:NaN;};
+ const start=clockMinutes(plan?.shift_start),end=clockMinutes(plan?.shift_end);
+ return Number.isFinite(start)&&Number.isFinite(end)&&end>start?Math.max(1,Math.round((end-start)/60)):Math.max(1,Array.isArray(plan?.hourly_targets)?plan.hourly_targets.length:1);
+}
 function getPlanHourlyRate(plan){
  const targets=Array.isArray(plan?.hourly_targets)?plan.hourly_targets:[];
  const first=targets.find(row=>Number(row?.planned_qty||0)>0);
