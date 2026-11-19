@@ -38,7 +38,7 @@ if(allocationEnd<0)throw new Error('Draft allocation query block is incomplete.'
 const allocationQuery=[
 "const [poolResult,allocatedResult,registryResult,planStatusResult]=await Promise.all([",
 "     fetchAllRows((from,to)=>supabase.from('monthly_plan_serials').select('label_number,serial_number,sequence_no').eq('monthly_plan_id',monthlyPlan.id).order('sequence_no',{ascending:true}).range(from,to)),",
-"     fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').order('id',{ascending:true}).range(from,to)),",
+"     fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number,status').order('id',{ascending:true}).range(from,to)),",
 "     fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to)),",
 "     fetchAllRows((from,to)=>supabase.from('production_plans').select('id,status').order('id',{ascending:true}).range(from,to))",
 "    ]);"
@@ -49,8 +49,8 @@ if(!source.includes(registryErrorAnchor))throw new Error('Draft serial registry 
 source=source.replace(registryErrorAnchor,registryErrorAnchor+"\n    if(planStatusResult.error)throw new Error('Could not verify Daily Plan allocation status: '+planStatusResult.error.message);");
 const usedAnchor="    const usedSerials=new Set((allocatedResult.data||[]).map(row=>normalize(row.serial_number)).filter(Boolean));\n    const usedLabels=new Set((allocatedResult.data||[]).map(row=>normalize(row.label_number)).filter(Boolean));";
 const usedReplacement=[
-"    const livePlanIds=new Set((planStatusResult.data||[]).filter(row=>row.status!=='cancelled').map(row=>row.id));",
-"    const liveAllocations=(allocatedResult.data||[]).filter(row=>livePlanIds.has(row.plan_id));",
+"    const planStatusById=new Map((planStatusResult.data||[]).map(row=>[row.id,row.status]));",
+"    const liveAllocations=(allocatedResult.data||[]).filter(row=>planStatusById.get(row.plan_id)!=='cancelled'||row.status!=='pending');",
 "    const usedSerials=new Set(liveAllocations.map(row=>normalize(row.serial_number)).filter(Boolean));",
 "    const usedLabels=new Set(liveAllocations.map(row=>normalize(row.label_number)).filter(Boolean));"
 ].join('\n');
@@ -65,18 +65,18 @@ if(conflictStart<0||conflictEnd<0)throw new Error('Serial allocation conflict-ch
 const conflictFunction=[
 "const checkDatabaseForConflicts=async(parsedRows,excludePlanId='')=>{",
 " const [allocatedResult,registryResult,planStatusResult]=await Promise.all([",
-"  fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').order('id',{ascending:true}).range(from,to)),",
+"  fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number,status').order('id',{ascending:true}).range(from,to)),",
 "  fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to)),",
 "  fetchAllRows((from,to)=>supabase.from('production_plans').select('id,status').order('id',{ascending:true}).range(from,to))",
 " ]);",
 " if(allocatedResult.error)throw new Error('Could not check existing production serial batches: '+allocatedResult.error.message);",
 " if(registryResult.error)throw new Error('Could not check the serial registry: '+registryResult.error.message);",
 " if(planStatusResult.error)throw new Error('Could not check Daily Plan allocation status: '+planStatusResult.error.message);",
-" const livePlanIds=new Set((planStatusResult.data||[]).filter(row=>row.status!=='cancelled').map(row=>row.id));",
+" const planStatusById=new Map((planStatusResult.data||[]).map(row=>[row.id,row.status]));",
 " const serialAllocations=new Map(),labelAllocations=new Map(),registeredSerials=new Set(),ownSerials=new Set();",
 " for(const row of allocatedResult.data||[]){",
 "  if(excludePlanId&&row.plan_id===excludePlanId){if(row.serial_number)ownSerials.add(row.serial_number);continue;}",
-"  if(!livePlanIds.has(row.plan_id))continue;",
+"  if(planStatusById.get(row.plan_id)==='cancelled'&&row.status==='pending')continue;",
 "  if(row.serial_number&&!serialAllocations.has(row.serial_number))serialAllocations.set(row.serial_number,row);",
 "  if(row.label_number&&!labelAllocations.has(row.label_number))labelAllocations.set(row.label_number,row);",
 " }",
