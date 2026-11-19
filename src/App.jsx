@@ -3,6 +3,7 @@
 // V1.1 SHIFT PLANNING
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from './lib/supabase';
+import ProductionRejections from './components/ProductionRejections';
 
 const lines=['Line 1','Line 2','Line 3'];
 function getPlanHours(plan){
@@ -425,7 +426,7 @@ export default function App({user}){
  const todayKey=localDateKey(now);
  const dashboardPlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&(p.status==='active'||p.production_date>=todayKey)).sort((a,b)=>(b.production_date||'').localeCompare(a.production_date||'')||(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)),[plans,todayKey]);
  const operatorEligiblePlans=useMemo(()=>plans.filter(p=>(p.status==='active'||p.status==='draft')&&p.production_date===todayKey).sort((a,b)=>(a.production_line||'').localeCompare(b.production_line||'')||(getPlanShiftWindow(a)?.start??0)-(getPlanShiftWindow(b)?.start??0)||(a.created_at||'').localeCompare(b.created_at||'')),[plans,todayKey]);
- const pendingSerials=useMemo(()=>planSerials.filter(s=>s.status!=='scanned'),[planSerials]);
+ const pendingSerials=useMemo(()=>planSerials.filter(s=>s.status==='pending'),[planSerials]);
  const scannedSerials=useMemo(()=>planSerials.filter(s=>s.status==='scanned'),[planSerials]);
  const uniqueDuplicateSerials=useMemo(()=>[...new Map(duplicateScans.map(e=>[e.serial_number,e])).values()],[duplicateScans]);
  const lastScannedRecord=useMemo(()=>scannedSerials.reduce((latest,row)=>!latest||new Date(row.scanned_at||0).getTime()>new Date(latest.scanned_at||0).getTime()?row:latest,null),[scannedSerials]);
@@ -734,6 +735,15 @@ export default function App({user}){
     return;
    }
    if(data.status==='scanned'){await showDuplicate(data);return;}
+   if(data.status==='rejected'){setMessage('REJECTED SERIAL: '+data.serial_number+' · Send this unit for rework and reinspection.');return;}
+   const [quantityRejectionsResult,serialStatusResult]=await Promise.all([
+    supabase.from('production_rejections').select('quantity,status').eq('plan_id',selectedPlan.id).eq('rejection_type','quantity').neq('status','closed'),
+    supabase.from('plan_serials').select('id').eq('plan_id',selectedPlan.id).in('status',['scanned','rejected'])
+   ]);
+   if(quantityRejectionsResult.error||serialStatusResult.error){setMessage('Could not verify remaining production quantity. Scan paused; refresh and retry.');return;}
+   const quantityAccounted=(quantityRejectionsResult.data||[]).reduce((sum,row)=>sum+Number(row.quantity||0),0);
+   const serialAccounted=(serialStatusResult.data||[]).length;
+   if(quantityAccounted+serialAccounted>=Number(selectedPlan.planned_qty||0)){setMessage('PLAN QUANTITY FULLY ACCOUNTED · Further scans are blocked because accepted plus rejected quantity has reached the plan target.');return;}
    const scannedAt=new Date().toISOString();
    const {data:updated,error:updateError}=await supabase.from('plan_serials')
     .update({status:'scanned',scanned_at:scannedAt,scanned_by:operator})
@@ -743,7 +753,7 @@ export default function App({user}){
    const scannedRow={...data,status:'scanned',scanned_at:scannedAt,scanned_by:operator};
    const mergeScanned=previous=>previous.some(row=>row.id===data.id)?previous.map(row=>row.id===data.id?{...row,...scannedRow}:row):[...previous,scannedRow];
    setPlanSerials(mergeScanned);setMonitoringSerials(mergeScanned);setMonitoringUpdatedAt(new Date());setLastScanAt(scannedAt);
-   const completedByThisScan=Number(selectedPlan.planned_qty||0)>0&&planSerials.filter(row=>row.status==='scanned').length+1>=Number(selectedPlan.planned_qty||0);
+   const completedByThisScan=Number(selectedPlan.planned_qty||0)>0&&quantityAccounted+serialAccounted+1>=Number(selectedPlan.planned_qty||0);
    const successMessage=completedByThisScan?'✓ PLAN TARGET REACHED · '+data.serial_number:'✓ SCANNED: '+data.serial_number+' · Label '+(data.label_number||'—');
    setMessage(successMessage);
    broadcastProductionChange('scan',selectedPlan.id,data.id);
@@ -1063,6 +1073,11 @@ export default function App({user}){
     }
    }} placeholder={scannerReady?'Ready — scan QR code now':'Waiting for selected shift to start'} disabled={!scannerReady} aria-label='2D barcode scanner input'/><small>Scanner codes are processed automatically when the scanner sends Enter or Tab.</small></label>
    <div className={'operator-scan-state '+(duplicateWarning?'is-duplicate':scannerReady?'is-ready':'is-waiting')}><i/>{duplicateWarning?<><strong>Duplicate detected: {duplicateWarning.serial_number} — already scanned.</strong><span>Alert clears automatically.</span></>:<><strong>{message|| (scannerReady?'READY TO SCAN · Scan the next QR code':'Scanner not ready')}</strong><span>{scannerReady?'No mouse or keyboard interaction is needed during scanning.':'Check the selected plan and its scheduled shift.'}</span></>}</div>
+   {selectedPlan&&!showPlanSetup&&<ProductionRejections plan={selectedPlan} operatorName={operator} planSerials={planSerials} onRefresh={async completedPlan=>{
+    if(completedPlan){setSelectedPlan(completedPlan);setPlans(previous=>previous.map(row=>row.id===completedPlan.id?completedPlan:row));setScannerReady(false);}
+    await refreshPlanMetrics(completedPlan||selectedPlan);
+    await refreshMonitoring();
+   }} onChanged={()=>broadcastProductionChange('rejection',selectedPlan.id)} />}
    <section className='operator-recent-scans'>
     <div className='operator-recent-scans-heading'><div><span className='eyebrow'>RECENT SCAN HISTORY</span><strong>Last scanned QR codes</strong></div><span>{scannedSerials.length.toLocaleString()} total scanned</span></div>
     {recentScannedSerials.length?<div className='operator-recent-list'>{recentScannedSerials.map((row,index)=><div className='operator-recent-row' key={row.id}><span className='operator-recent-index'>{index+1}</span><div className='operator-recent-code'><strong>{row.serial_number}</strong><small>Label {row.label_number||'—'} · Seq {row.sequence_no??'—'}</small></div><div className='operator-recent-time'>{row.scanned_at?new Date(row.scanned_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'—'}<small>SCANNED</small></div></div>)}</div>:<div className='operator-recent-empty'>No serials scanned yet. The latest scans will appear here automatically.</div>}
