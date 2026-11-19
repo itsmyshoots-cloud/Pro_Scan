@@ -128,7 +128,7 @@ const recordsTitleOld="<h3>All created daily plans</h3><p>Daily plans are linked
 const recordsTitleNew="<h3>Daily Production Records</h3><p>One list of every daily plan, with planned output, actual scans and remaining quantity.</p>";
 source=source.replace(recordsTitleOld,recordsTitleNew);
 
-const filterAnchor=" </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>\\n  {dailyPlansLoading?";
+const filterAnchor=" </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>\n  {dailyPlansLoading?";
 const filterBlock=[
 " </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>",
 "  <div className='daily-record-filters'>",
@@ -139,7 +139,7 @@ const filterBlock=[
 "  </div>",
 "  <div className='daily-record-result-count'>{dailyRecordFilteredPlans.length.toLocaleString()} plan(s) found</div>",
 "  {dailyPlansLoading?"
-].join('\\n');
+].join('\n');
 if(!source.includes(filterAnchor))throw new Error('Daily Records filter insertion anchor not found.');
 source=source.replace(filterAnchor,filterBlock);
 source=source.replace("dailyPlansList.length?<div className='daily-plan-table-wrap'>","dailyRecordFilteredPlans.length?<div className='daily-plan-table-wrap'>");
@@ -154,7 +154,7 @@ const pagination=[
 " <span>Showing {dailyRecordFilteredPlans.length?((dailyRecordPage-1)*dailyRecordPageSize+1).toLocaleString():'0'}–{Math.min(dailyRecordPage*dailyRecordPageSize,dailyRecordFilteredPlans.length).toLocaleString()} of {dailyRecordFilteredPlans.length.toLocaleString()}</span>",
 " <div><button type='button' disabled={dailyRecordPage<=1} onClick={()=>setDailyRecordPage(page=>Math.max(1,page-1))}>Previous</button><span>Page {dailyRecordPage} of {dailyRecordPageCount}</span><button type='button' disabled={dailyRecordPage>=dailyRecordPageCount} onClick={()=>setDailyRecordPage(page=>Math.min(dailyRecordPageCount,page+1))}>Next</button></div>",
 "</div>:<div className='empty'>"
-].join('\\n');
+].join('\n');
 if(source.includes(tableClose)&&!source.includes("className='daily-record-pagination'"))source=source.replace(tableClose,pagination);
 
 if(!css.includes("/* daily-plan-layout-v3 */")){
