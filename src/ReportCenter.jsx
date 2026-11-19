@@ -220,7 +220,7 @@ export default function ReportCenter({onNavigate,embedded=true}){
   </main>
   {detail&&<div className='rc-rework-detail-backdrop' role='presentation' onMouseDown={e=>{if(e.target===e.currentTarget)setDetail(null);}}>
    <section className='rc-rework-detail-modal' role='dialog' aria-modal='true' aria-labelledby='rc-rework-detail-title'>
-    <header><div><span className='rc-kicker'>QUALITY & REWORK HISTORY</span><h2 id='rc-rework-detail-title'>{detail.title}</h2><p>{detail.rows.reduce((n,r)=>n+n(r.quantity),0).toLocaleString('en-IN')} unit(s) · {detail.rows.length} rejection record(s)</p></div><button type='button' aria-label='Close rejection details' onClick={()=>setDetail(null)}>×</button></header>
+    <header><div><span className='rc-kicker'>QUALITY & REWORK HISTORY</span><h2 id='rc-rework-detail-title'>{detail.title}</h2><p>{detail.rows.reduce((sum,row)=>sum+Number(row.quantity||1),0).toLocaleString('en-IN')} unit(s) · {detail.rows.length} rejection record(s)</p></div><button type='button' aria-label='Close rejection details' onClick={()=>setDetail(null)}>×</button></header>
     {detail.rows.length?<div className='rc-rework-detail-table-wrap'><table className='rc-rework-detail-table'><thead><tr><th>Date / Plan</th><th>Serial / Type</th><th>Qty</th><th>Reason</th><th>Operator remarks</th><th>Status</th><th>Rework remarks</th><th>Resolved by / time</th></tr></thead><tbody>
      {detail.rows.map(row=><tr key={row.id}>
       <td>{dateKey(row.plan?.production_date)}<small>{row.plan?.production_line||'—'} · {row.plan?.shift_name||'Shift A'}</small><small>{row.plan?.product_name||'—'} · {row.plan?.model||'—'}</small></td>
