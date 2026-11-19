@@ -1,22 +1,16 @@
 import fs from 'node:fs';
 
-const appPath = 'src/App.jsx';
-const source = fs.readFileSync(appPath, 'utf8');
+const source = fs.readFileSync('src/App.jsx', 'utf8');
 
-const required = [
-  'function getPlanHours(',
-  'function getPlanHourlyRate('
-];
-
-for (const token of required) {
+for (const token of ['function getPlanHours(', 'function getPlanHourlyRate(']) {
   if (!source.includes(token)) {
     throw new Error('Missing shared production helper: ' + token);
   }
 }
 
-for (const legacy of [/\\bplanHours\\s*\\(/, /\\bplanHourlyRate\\s*\\(/]) {
-  if (legacy.test(source)) {
-    throw new Error('Legacy component-scoped hourly helper reference remains: ' + legacy);
+for (const legacyCall of ['planHours(', 'planHourlyRate(']) {
+  if (source.includes(legacyCall)) {
+    throw new Error('Legacy component-scoped hourly helper reference remains: ' + legacyCall);
   }
 }
 
