@@ -80,10 +80,10 @@ const productSection=[
 ].join('\n');
 source=source.slice(0,gridStart)+productSection+source.slice(shiftStart);
 
-const oldShift="<div className='daily-shift-heading'><div><span className='eyebrow'>SHIFT CAPACITY</span><h3>Plan within available production hours</h3><p>Target / hour is the normal production rate. Each hourly quantity below can be edited when required for a short shift, balance quantity or other production exception. The monthly serial pool remains the hard limit.</p></div></div>";
+const shiftHeadingPattern=/<div className='daily-shift-heading'>[\\s\\S]*?<\\/div><\\/div>/;
 const newShift="<div className='daily-step-heading'><span className='daily-step-number'>02</span><div><h3>Shift, rate & manpower</h3><p>Set the shift window, break duration, hourly rate and manpower for this production run.</p></div></div>";
-if(!source.includes(oldShift)) throw new Error('Daily shift heading anchor not found.');
-source=source.replace(oldShift,newShift);
+if(!shiftHeadingPattern.test(source))throw new Error('Daily shift heading structural wrapper not found.');
+source=source.replace(shiftHeadingPattern,newShift);
 
 const oldCapacity="<div className='daily-capacity-summary'><div><span>Monthly available</span><strong>{dailyAvailableQty.toLocaleString()}</strong></div><div><span>Shift capacity</span><strong>{(Array.isArray(hourlyTargets)?hourlyTargets:[]).reduce((sum,row)=>sum+Math.max(0,Math.floor(Number(row.planned_qty)||0)),0).toLocaleString()}</strong></div><div><span>Daily planned</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><div><span>Remaining monthly</span><strong>{Math.max(0,dailyAvailableQty-Number(form.planned_qty||0)).toLocaleString()}</strong></div></div>";
 const newCapacity="<div className='daily-shift-summary'><div><span>Productive hours</span><strong>{dailyProductiveHours.toLocaleString()}</strong></div><div><span>Shift capacity</span><strong>{dailyShiftCapacity.toLocaleString()}</strong></div><div><span>Daily planned</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div><div><span>Unused shift capacity</span><strong>{Math.max(0,dailyShiftCapacity-Number(form.planned_qty||0)).toLocaleString()}</strong></div></div>";
