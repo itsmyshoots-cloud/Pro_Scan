@@ -228,7 +228,7 @@ const css=String.raw`
 `;
 fs.writeFileSync(cssFile,css);
 if(!source.includes("import './global-ui-ux.css';"))throw new Error('Global UI stylesheet import is missing.');
-if(!source.includes("className='live-quantity-panel'")||!source.includes("className='live-line-panel'")||!source.includes("className='live-activity-panel'"))throw new Error('Live View must contain quantity, line/hourly and activity panels.');
+if(!source.includes('live-quantity-panel')||!source.includes('live-line-panel')||!source.includes('LIVE SCAN ACTIVITY'))throw new Error('Live View must contain product quantity, line/hourly and scan activity sections.');
 if(!source.includes("className='daily-primary-grid'")||!source.includes("className='monthly-form-grid'")||!source.includes("className='management-advanced-grid'"))throw new Error('A production form layout section is missing.');
 if(source.includes("view==='dashboard'"))throw new Error('Legacy Dashboard route should remain removed.');
 fs.writeFileSync(appFile,source);
