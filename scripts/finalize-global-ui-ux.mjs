@@ -14,6 +14,38 @@ if(!source.includes("import './global-ui-ux.css';")){
  }
 }
 
+
+/* Remove four read-only product pseudo-inputs from the Daily Plan form.
+   Keep only the editable schedule selectors, and present inherited Monthly Plan
+   details once as a compact read-only context strip. */
+const oldDailyFields=[
+"   <label>Brand<input value={form.brand} readOnly/></label>",
+"   <label>Product<input value={form.product_name} readOnly/></label>",
+"   <label>Model<input value={form.model} readOnly/></label>",
+"   <label>MRP<input value={dailyMonthlyPlans.find(plan=>plan.id===dailyMonthlyPlanId)?'₹ '+Number(dailyMonthlyPlans.find(plan=>plan.id===dailyMonthlyPlanId).mrp||0).toLocaleString('en-IN'):''} readOnly/></label>",
+"   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(line=><option key={line}>{line}</option>)}</select></label>"
+].join('\n');
+const newDailyFields=[
+"   <label>Production line<select value={form.production_line} onChange={e=>setForm({...form,production_line:e.target.value})}>{lines.map(line=><option key={line}>{line}</option>)}</select></label>",
+"  </div>",
+"  <div className='daily-product-context' aria-label='Selected Monthly Plan details'>",
+"   <div><span>Brand</span><strong>{form.brand||'—'}</strong></div>",
+"   <div><span>Product</span><strong>{form.product_name||'—'}</strong></div>",
+"   <div><span>Model</span><strong>{form.model||'—'}</strong></div>",
+"   <div><span>MRP</span><strong>{dailyMonthlyPlans.find(plan=>plan.id===dailyMonthlyPlanId)?'₹ '+Number(dailyMonthlyPlans.find(plan=>plan.id===dailyMonthlyPlanId).mrp||0).toLocaleString('en-IN'):'—'}</strong></div>",
+"  </div>"
+].join('\n');
+if(source.includes(oldDailyFields)){
+ source=source.replace(oldDailyFields,newDailyFields);
+}else if(!source.includes("className='daily-product-context'")){
+ throw new Error('Daily Plan inherited product fields were not found; layout finalizer stopped safely.');
+}
+const duplicateDailyMetric="<div><span>Daily planned</span><strong>{Number(form.planned_qty||0).toLocaleString()}</strong></div>";
+source=source.replace(duplicateDailyMetric,'');
+const verboseAllocationNote="<div className='daily-rule-note'><strong>Serial allocation:</strong> {dailyAvailableQty.toLocaleString()} monthly serials are currently available. Creating this daily plan reserves exactly {Number(form.planned_qty||0).toLocaleString()} serials. The remaining quantity stays in the monthly pool for a future daily plan.</div>";
+const conciseAllocationNote="<div className='daily-rule-note'><strong>Serial allocation:</strong> Creating this plan reserves the entered quantity from the selected Monthly Plan. Any unallocated quantity remains available for future Daily Plans.</div>";
+if(source.includes(verboseAllocationNote))source=source.replace(verboseAllocationNote,conciseAllocationNote);
+
 const css=String.raw`
 /* global-ui-ux-v1 — consistent page rhythm, forms and production Live View */
 :root{--ui-ink:#17243a;--ui-muted:#667991;--ui-border:#dce5f0;--ui-soft:#f5f8fc;--ui-blue:#245fca;--ui-green:#087b4d}
@@ -56,6 +88,12 @@ const css=String.raw`
 .daily-summary-card{padding:13px 15px;border-radius:12px}
 .daily-form-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .daily-product-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
+.daily-product-context{display:grid;grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:2px}
+.daily-product-context>div{min-width:0;padding:11px 13px;border:1px solid #e3ebf5;border-radius:10px;background:#f7faff}
+.daily-product-context span{display:block;color:#7889a1;font-size:9px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.daily-product-context strong{display:block;margin-top:5px;color:#223958;font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.daily-capacity-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+
 .daily-shift-card{gap:14px;padding:17px 18px}
 .daily-shift-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
 .daily-shift-grid label,.daily-form-grid label,.daily-notes-field{display:flex;flex-direction:column;gap:6px;color:#52627a;font-size:10px;font-weight:850}
@@ -202,7 +240,7 @@ const css=String.raw`
  .live-quantity-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
  .line-monitor-grid{grid-template-columns:1fr}
  .daily-form-grid,.daily-shift-grid,.monthly-form-grid,.management-advanced-grid,.report-filter-grid,.rw-filter-grid,.user-admin-page .user-admin-card .grid{grid-template-columns:1fr}
- .daily-summary-grid,.daily-product-summary,.daily-shift-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .daily-summary-grid,.daily-product-summary,.daily-product-context,.daily-capacity-summary,.daily-shift-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
  .daily-production-page .hourly-target-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .monthly-upload-row{grid-template-columns:1fr}
  .monthly-plan-card{grid-template-columns:1fr}
@@ -213,7 +251,7 @@ const css=String.raw`
  .app-operator .operator-workstation-grid{grid-template-columns:minmax(0,1fr) minmax(300px,.85fr)}
 }
 @media(max-width:520px){
- .daily-summary-grid,.daily-product-summary,.daily-shift-summary{grid-template-columns:1fr 1fr}
+ .daily-summary-grid,.daily-product-summary,.daily-product-context,.daily-capacity-summary,.daily-shift-summary{grid-template-columns:1fr 1fr}
  .daily-shift-grid{grid-template-columns:1fr}
  .daily-production-page .hourly-target-grid{grid-template-columns:1fr 1fr}
  .live-quantity-kpis{grid-template-columns:1fr 1fr}
