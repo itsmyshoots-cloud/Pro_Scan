@@ -26,9 +26,9 @@ const previewPattern=/ const planCarryPreview=plan=>\{[\s\S]*?\n \};/;
 const previewReplacement=` const planCarryPreview=plan=>{
   if(!plan)return null;
   const quantity=planCarryForward(plan);
-  const rate=Math.max(1,planHourlyRate(plan));
+  const rate=Math.max(1,getPlanHourlyRate(plan));
   const shift=getPlanShiftWindow(plan);
-  const hours=shift?Math.max(1,Math.floor((shift.end-shift.start)/60)):planHours(plan);
+  const hours=shift?Math.max(1,Math.floor((shift.end-shift.start)/60)):getPlanHours(plan);
   const capacity=Math.max(1,rate*hours);
   const start=shift?.start??540;
   const end=shift?.end??(start+hours*60);
@@ -88,8 +88,8 @@ const manageReplacement=`<tbody>{filteredPlans.map(plan=>{
   })}
   {expanded&&<tr className='manage-plan-details-row'><td colSpan='8'><section className='manage-plan-panel'>
    <div className='manage-plan-header'><div><span className='eyebrow'>PRODUCTION PLAN</span><h3>{plan.product_name} · {plan.model}</h3><p>{plan.production_date} · {plan.production_line} · {plan.shift_name||'Shift A'}</p></div><span className={'plan-status-badge status-'+plan.status}>{plan.status}</span></div>
-   <div className='manage-plan-metrics'><div><span>Shift window</span><strong>{formatClock12(String(plan.shift_start||'09:00').slice(0,5))} – {formatClock12(String(plan.shift_end||'18:00').slice(0,5))}</strong></div><div><span>Hourly rate</span><strong>{planHourlyRate(plan).toLocaleString()} units/hr</strong></div><div><span>Shift capacity</span><strong>{capacity.toLocaleString()}</strong></div><div><span>Batch requirement</span><strong>{requirement.toLocaleString()}</strong></div><div><span>Actual scanned</span><strong>{scanned.toLocaleString()}</strong></div><div><span>Shift remaining</span><strong>{Math.max(0,capacity-scanned).toLocaleString()}</strong></div><div><span>Manpower</span><strong>{Number(plan.manpower_count||0).toLocaleString()}</strong></div><div><span>Plan ID</span><strong>#{plan.id.slice(0,8)}</strong></div></div>
-   <div className='manage-hourly-section'><div className='manage-section-title'>Hourly production plan <span>{planHourlyRate(plan).toLocaleString()} units/hr · {capacity.toLocaleString()} shift capacity</span></div><div className='manage-hourly-grid'>{(Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]).filter(row=>Number(row.planned_qty||0)>0).map(row=><div className='manage-hour-card' key={row.hour}><strong>{getHourlySlotLabel(row.hour)}</strong><span>{Number(row.planned_qty||0).toLocaleString()} units planned</span></div>)}</div></div>
+   <div className='manage-plan-metrics'><div><span>Shift window</span><strong>{formatClock12(String(plan.shift_start||'09:00').slice(0,5))} – {formatClock12(String(plan.shift_end||'18:00').slice(0,5))}</strong></div><div><span>Hourly rate</span><strong>{getPlanHourlyRate(plan).toLocaleString()} units/hr</strong></div><div><span>Shift capacity</span><strong>{capacity.toLocaleString()}</strong></div><div><span>Batch requirement</span><strong>{requirement.toLocaleString()}</strong></div><div><span>Actual scanned</span><strong>{scanned.toLocaleString()}</strong></div><div><span>Shift remaining</span><strong>{Math.max(0,capacity-scanned).toLocaleString()}</strong></div><div><span>Manpower</span><strong>{Number(plan.manpower_count||0).toLocaleString()}</strong></div><div><span>Plan ID</span><strong>#{plan.id.slice(0,8)}</strong></div></div>
+   <div className='manage-hourly-section'><div className='manage-section-title'>Hourly production plan <span>{getPlanHourlyRate(plan).toLocaleString()} units/hr · {capacity.toLocaleString()} shift capacity</span></div><div className='manage-hourly-grid'>{(Array.isArray(plan.hourly_targets)?plan.hourly_targets:[]).filter(row=>Number(row.planned_qty||0)>0).map(row=><div className='manage-hour-card' key={row.hour}><strong>{getHourlySlotLabel(row.hour)}</strong><span>{Number(row.planned_qty||0).toLocaleString()} units planned</span></div>)}</div></div>
    {sourcePlan&&<div className='manage-carry-actual'><b>Carry-forward source:</b> {sourcePlan.production_date} · {sourcePlan.production_line} · {planShiftLabel(sourcePlan)} · {planRequirement(sourcePlan).toLocaleString()} units</div>}
    {destination&&<div className='manage-carry-actual'><b>Next carry-forward:</b> {destination.production_date} · {destination.production_line} · {planShiftLabel(destination)} · requirement {planRequirement(destination).toLocaleString()} · capacity {planCapacity(destination).toLocaleString()}</div>}
   </section></td></tr>}
