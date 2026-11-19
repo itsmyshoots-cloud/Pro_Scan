@@ -154,7 +154,7 @@ source=source.slice(0,metricStart)+metricFunction+source.slice(metricEffect);
 if(!source.includes("import ReworkCenter from './components/ReworkCenter';"))throw new Error('ReworkCenter import verification failed.');
 if(!source.includes("onClick={()=>setView('rework')}>Rework</button>"))throw new Error('Rework navigation verification failed.');
 if(!source.includes("{view==='rework'&&<ReworkCenter"))throw new Error('Rework route verification failed.');
-if(!source.includes("const livePlanIds=new Set("))throw new Error('Cancelled-plan serial release verification failed.');
+if(!source.includes("planStatusById.get(row.plan_id)!=='cancelled'||row.status!=='pending'")||!source.includes("planStatusById.get(row.plan_id)==='cancelled'&&row.status==='pending'"))throw new Error('Cancelled pending allocation release verification failed.');
 if(!source.includes("if(!/^\\d{4}-\\d{2}$/.test(month))"))throw new Error('Draft date validation was not corrected.');
 if(source===original)throw new Error('Rework workflow finalizer made no changes.');
 fs.writeFileSync(file,source);
