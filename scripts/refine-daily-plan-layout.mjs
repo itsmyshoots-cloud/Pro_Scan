@@ -124,14 +124,13 @@ const successAnchor="setSelectedPlan(savedPlan||null);";
 if(!source.includes(successAnchor)) throw new Error('Daily Plan save success anchor not found.');
 source=source.replace(successAnchor,successAnchor+"setDailyFormCollapsed(true);");
 
-const recordsStart2=source.indexOf("<section className='panel daily-plans-list-panel'>",pageStart);
-const recordsEnd=source.indexOf("</section>",recordsStart2);
-if(recordsStart2<0||recordsEnd<0) throw new Error('Daily Production Records panel boundaries not found.');
-let records=source.slice(recordsStart2,recordsEnd+"</section>".length);
-records=records.replace("<h3>All created daily plans</h3><p>Daily plans are linked to their Monthly Plan. You can edit a Draft plan, but serial quantity cannot be added from the Daily Plan screen.</p>","<h3>Daily Production Records</h3><p>One list of every daily plan, with planned output, actual scans and remaining quantity.</p>");
-const filterAnchor="</div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>\n  {dailyPlansLoading?";
+const recordsTitleOld="<h3>All created daily plans</h3><p>Daily plans are linked to their Monthly Plan. You can edit a Draft plan, but serial quantity cannot be added from the Daily Plan screen.</p>";
+const recordsTitleNew="<h3>Daily Production Records</h3><p>One list of every daily plan, with planned output, actual scans and remaining quantity.</p>";
+source=source.replace(recordsTitleOld,recordsTitleNew);
+
+const filterAnchor=" </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>\\n  {dailyPlansLoading?";
 const filterBlock=[
-"</div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>",
+" </div><button type='button' onClick={()=>{void loadDailyPlansList();void loadDailyMonthlyPlans();}}>↻ Refresh</button></div>",
 "  <div className='daily-record-filters'>",
 "   <label>Search<input type='search' value={dailyRecordSearch} placeholder='Search product, brand or model' onChange={e=>{setDailyRecordSearch(e.target.value);setDailyRecordPage(1);}}/></label>",
 "   <label>Production date<select value={dailyRecordDate} onChange={e=>{setDailyRecordDate(e.target.value);setDailyRecordPage(1);}}><option value='all'>All dates</option>{dailyRecordDateOptions.map(date=><option key={date} value={date}>{new Date(date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</option>)}</select></label>",
@@ -140,27 +139,23 @@ const filterBlock=[
 "  </div>",
 "  <div className='daily-record-result-count'>{dailyRecordFilteredPlans.length.toLocaleString()} plan(s) found</div>",
 "  {dailyPlansLoading?"
-].join('\n');
-if(!records.includes(filterAnchor)) throw new Error('Daily Records filter insertion anchor not found.');
-records=records.replace(filterAnchor,filterBlock);
-records=records.replace("dailyPlansList.length?<div className='daily-plan-table-wrap'>","dailyRecordFilteredPlans.length?<div className='daily-plan-table-wrap'>");
-if(!records.includes('dailyPlansList.map('))throw new Error('Daily Plan table row map not found in the records section.');
-records=records.replace('dailyPlansList.map(','dailyRecordPageRows.map(');
+].join('\\n');
+if(!source.includes(filterAnchor))throw new Error('Daily Records filter insertion anchor not found.');
+source=source.replace(filterAnchor,filterBlock);
+source=source.replace("dailyPlansList.length?<div className='daily-plan-table-wrap'>","dailyRecordFilteredPlans.length?<div className='daily-plan-table-wrap'>");
+if(source.includes('dailyPlansList.map(')) source=source.replace('dailyPlansList.map(','dailyRecordPageRows.map(');
 const oldAction="<td>{plan.status==='draft'?<button type='button' onClick={()=>void startEditPlan(plan)}>Edit draft</button>:<span className='muted-action'>Locked</span>}</td>";
 const newAction="<td><div className='daily-record-actions'><button type='button' onClick={()=>{setSelectedPlan(plan);setExpandedManagePlanId(plan.id);setView('manage');void refreshMonitoring();}}>Details</button>{plan.status==='draft'&&<button type='button' onClick={()=>void startEditPlan(plan)}>Edit draft</button>}</div></td>";
-if(!records.includes(oldAction)) throw new Error('Daily Records action cell anchor not found.');
-records=records.replace(oldAction,newAction);
-records=records.replace("<div className='empty'>No daily plans created yet.</div>","<div className='empty'>No daily plans match the selected filters.</div>");
+if(source.includes(oldAction))source=source.replace(oldAction,newAction);
+source=source.replace("<div className='empty'>No daily plans created yet.</div>","<div className='empty'>No daily plans match the selected filters.</div>");
 const tableClose="</table></div>:<div className='empty'>";
 const pagination=[
 "</table></div><div className='daily-record-pagination'>",
 " <span>Showing {dailyRecordFilteredPlans.length?((dailyRecordPage-1)*dailyRecordPageSize+1).toLocaleString():'0'}–{Math.min(dailyRecordPage*dailyRecordPageSize,dailyRecordFilteredPlans.length).toLocaleString()} of {dailyRecordFilteredPlans.length.toLocaleString()}</span>",
 " <div><button type='button' disabled={dailyRecordPage<=1} onClick={()=>setDailyRecordPage(page=>Math.max(1,page-1))}>Previous</button><span>Page {dailyRecordPage} of {dailyRecordPageCount}</span><button type='button' disabled={dailyRecordPage>=dailyRecordPageCount} onClick={()=>setDailyRecordPage(page=>Math.min(dailyRecordPageCount,page+1))}>Next</button></div>",
 "</div>:<div className='empty'>"
-].join('\n');
-if(!records.includes(tableClose)) throw new Error('Daily Records pagination anchor not found.');
-records=records.replace(tableClose,pagination);
-source=source.slice(0,recordsStart2)+records+source.slice(recordsEnd+"</section>".length);
+].join('\\n');
+if(source.includes(tableClose)&&!source.includes("className='daily-record-pagination'"))source=source.replace(tableClose,pagination);
 
 if(!css.includes("/* daily-plan-layout-v3 */")){
  css += [
