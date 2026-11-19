@@ -57,6 +57,43 @@ const usedReplacement=[
 if(!source.includes(usedAnchor))throw new Error('Draft allocation exclusion sets not found.');
 source=source.replace(usedAnchor,usedReplacement);
 
+// Keep the duplicate check consistent with Monthly Plan top-up: allocations in
+// cancelled plans are released unless the serial was already registered/scanned.
+const conflictStart=source.indexOf("const checkDatabaseForConflicts=async(");
+const conflictEnd=source.indexOf("\n const syncPlanStatuses",conflictStart);
+if(conflictStart<0||conflictEnd<0)throw new Error('Serial allocation conflict-check function not found.');
+const conflictFunction=[
+"const checkDatabaseForConflicts=async(parsedRows,excludePlanId='')=>{",
+" const [allocatedResult,registryResult,planStatusResult]=await Promise.all([",
+"  fetchAllRows((from,to)=>supabase.from('plan_serials').select('plan_id,serial_number,label_number').order('id',{ascending:true}).range(from,to)),",
+"  fetchAllRows((from,to)=>supabase.from('serial_numbers').select('serial_number').order('id',{ascending:true}).range(from,to)),",
+"  fetchAllRows((from,to)=>supabase.from('production_plans').select('id,status').order('id',{ascending:true}).range(from,to))",
+" ]);",
+" if(allocatedResult.error)throw new Error('Could not check existing production serial batches: '+allocatedResult.error.message);",
+" if(registryResult.error)throw new Error('Could not check the serial registry: '+registryResult.error.message);",
+" if(planStatusResult.error)throw new Error('Could not check Daily Plan allocation status: '+planStatusResult.error.message);",
+" const livePlanIds=new Set((planStatusResult.data||[]).filter(row=>row.status!=='cancelled').map(row=>row.id));",
+" const serialAllocations=new Map(),labelAllocations=new Map(),registeredSerials=new Set(),ownSerials=new Set();",
+" for(const row of allocatedResult.data||[]){",
+"  if(excludePlanId&&row.plan_id===excludePlanId){if(row.serial_number)ownSerials.add(row.serial_number);continue;}",
+"  if(!livePlanIds.has(row.plan_id))continue;",
+"  if(row.serial_number&&!serialAllocations.has(row.serial_number))serialAllocations.set(row.serial_number,row);",
+"  if(row.label_number&&!labelAllocations.has(row.label_number))labelAllocations.set(row.label_number,row);",
+" }",
+" for(const row of registryResult.data||[])if(row.serial_number)registeredSerials.add(row.serial_number);",
+" const conflicts=[];",
+" for(const row of parsedRows){",
+"  const reasons=[],existingSerial=serialAllocations.get(row.serial_number),existingLabel=labelAllocations.get(row.label_number);",
+"  if(existingSerial)reasons.push('Serial '+row.serial_number+' is already allocated in a different production plan');",
+"  if(registeredSerials.has(row.serial_number)&&!ownSerials.has(row.serial_number))reasons.push('Serial '+row.serial_number+' already exists in the serial registry');",
+"  if(existingLabel)reasons.push('Label '+row.label_number+' is already allocated in a different production plan');",
+"  if(reasons.length)conflicts.push({label_number:row.label_number,serial_number:row.serial_number,reasons:[...new Set(reasons)],existing_plan_id:existingSerial?.plan_id||existingLabel?.plan_id||''});",
+" }",
+" return conflicts;",
+" };"
+].join('\n');
+source=source.slice(0,conflictStart)+conflictFunction+source.slice(conflictEnd);
+
 const metricStart=source.indexOf("const loadPlanningMetrics=async(");
 const metricEffect=source.indexOf("useEffect(()=>{planningMetricsRefreshRef.current",metricStart);
 if(metricStart<0||metricEffect<0)throw new Error('Planning metrics function/effect anchors not found after the V7 planner patch.');
