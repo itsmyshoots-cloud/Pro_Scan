@@ -144,7 +144,8 @@ const filterBlock=[
 if(!records.includes(filterAnchor)) throw new Error('Daily Records filter insertion anchor not found.');
 records=records.replace(filterAnchor,filterBlock);
 records=records.replace("dailyPlansList.length?<div className='daily-plan-table-wrap'>","dailyRecordFilteredPlans.length?<div className='daily-plan-table-wrap'>");
-records=records.replace("dailyPlansList.map(plan=>{const metric=planningMetrics.daily?.[plan.id]||{};","dailyRecordPageRows.map(plan=>{const metric=planningMetrics.daily?.[plan.id]||{};");
+if(!records.includes('dailyPlansList.map('))throw new Error('Daily Plan table row map not found in the records section.');
+records=records.replace('dailyPlansList.map(','dailyRecordPageRows.map(');
 const oldAction="<td>{plan.status==='draft'?<button type='button' onClick={()=>void startEditPlan(plan)}>Edit draft</button>:<span className='muted-action'>Locked</span>}</td>";
 const newAction="<td><div className='daily-record-actions'><button type='button' onClick={()=>{setSelectedPlan(plan);setExpandedManagePlanId(plan.id);setView('manage');void refreshMonitoring();}}>Details</button>{plan.status==='draft'&&<button type='button' onClick={()=>void startEditPlan(plan)}>Edit draft</button>}</div></td>";
 if(!records.includes(oldAction)) throw new Error('Daily Records action cell anchor not found.');
